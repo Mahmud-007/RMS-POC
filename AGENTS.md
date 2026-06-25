@@ -259,7 +259,7 @@ Also seeded:
 - **Status:** Shipped
 - **Type:** Data
 
-**Context.** FEAT-001 used a duration-based generator (`MONTHS = 15` from `START_DATE = 2025-04-01`), which ran ~7 days past the present (the last row was `2026-07-02`). User reviewed the dataset in the SQLite Viewer VS Code extension and asked that no rows live in the future.
+**Context.** FEAT-001 used a duration-based generator (`MONTHS = 15` from `START_DATE = 2025-04-01`), which ran ~7 days past the present (the last row was `2026-06-25`). User reviewed the dataset in the SQLite Viewer VS Code extension and asked that no rows live in the future.
 
 **Decision.** Replace duration-based generation with an explicit, inclusive `[START_DATE, END_DATE]` interval.
 
@@ -289,5 +289,95 @@ Also seeded:
 
 **Follow-ups.**
 - When real ingestion is added, treat "max timestamp ≤ now" as an ingestion-side invariant rather than a generator-side one.
+
+### FEAT-003 — Feature builder
+
+- **Date:** 2026-06-25
+- **Author:** Day 1 PM
+- **Status:** Shipped
+- **Type:** Feature
+
+**Context.** Both the LightGBM base and the SGD residual need a stable, consistent feature representation. A single builder ensures the residual sees a strict superset of base inputs.
+
+**Decision.** Implement `app/features/feature_builder.py` with four feature groups, exposing two public entry points:
+
+- `build_training_frame(channel, db_path) -> (X, y, ts, FeatureSpec)` for batch training.
+- `build_inference_row(ts, channel, db_path, include_interactions=False) -> X` for serving.
+
+Feature groups (17 base features):
+
+- **Calendar** — `dow`, `hour`, `month`, `day_of_year_sin/cos`, `is_weekend`.
+- **Event** — `is_holiday`, `is_local_event`, `event_severity`, `is_promo`.
+- **Weather** — `temp`, `rain_mm`, `condition_code` (categorical).
+- **Lags** — `lag_1d`, `lag_7d`, `dow_4w_mean` (mean of 7/14/21/28-day-ago same-hour covers), `rolling_7d_mean` (same-hour 7-day rolling mean).
+
+Categorical features (`dow`, `hour`, `month`, `condition_code`) are surfaced via `FeatureSpec.categorical` and passed to LightGBM's native categorical handling.
+
+Interaction features (`rain_x_weekend`, `rain_x_dinner`) are off by default — they are the residual layer's responsibility and live behind `include_interactions=True`.
+
+`append_residual_features(...)` concatenates `base_pred` and reason-tag one-hots onto a base row for the SGD input.
+
+**Deviation from initial plan.** None. Matches `PLANNING.md §3` & `§7`.
+
+**Implementation notes.**
+- Lag warmup discards roughly the first 7 days of training rows (`lag_7d` is the gating column; `dow_4w_mean` is `mean(skipna=True)` so it's fine as long as at least one of its component lags is present).
+- Generator emits exactly 12 service hours/day per channel, so `shift(12 × n)` equals "same hour, n days ago" without merge overhead. If hours ever vary, the lag implementation must switch to a date-based join.
+- `_load_panel` joins `observations`, `weather`, and a pivoted `events` table in one pass to avoid downstream re-merges.
+
+**Verification.** `build_training_frame("dine_in")` returns `(5412, 17)` with zero NaN and date range 2025-04-01 → 2026-06-25.
+
+**Rollback plan.** Revert the file; no schema or data changes.
+
+**Follow-ups.**
+- FEAT-004 — Train LightGBM base per channel (consumes this builder).
+- FEAT-005 — SGD residual warm-start (adds `include_interactions=True` + base_pred + reason-tag features).
+
+
+### FEAT-004 — LightGBM base training per channel
+
+- **Date:** 2026-06-25
+- **Author:** Day 2 AM
+- **Status:** Shipped
+- **Type:** Model
+
+**Context.** Three channels (dine_in, delivery, takeaway) have demonstrably different driver responses — most importantly opposite-sign rain sensitivity (FEAT-001 ground truth: dine_in −0.06, delivery +0.03, takeaway −0.01 per mm). One unified model would average those out. Per-channel models avoid that.
+
+**Decision.** Implement `app/models/base_lgbm.LgbmBase` (LightGBM wrapper conforming to `models.interfaces.BaseModel`) and `app/train/train_base.run()` to train one booster per channel, with:
+
+- Time-based split: last 28 days are validation.
+- LightGBM params: `learning_rate=0.05`, `num_leaves=31`, `min_data_in_leaf=20`, feature/bagging fractions for regularization, MAE objective.
+- Early stopping after 30 rounds on validation MAE, max 1000 trees.
+- Native categorical handling for `dow`, `hour`, `month`, `condition_code`.
+- Metrics logged: MAE, MAPE, bias, R².
+- Each model persisted as `artifacts/models/base_v{utc_timestamp}_{shortid}_{channel}.txt`.
+- A row written to `model_registry` per trained model.
+
+**Verification — first training run.**
+
+| Channel | n_train | n_valid | MAE | MAPE | Bias | R² | Top features (by gain) |
+|---|---|---|---|---|---|---|---|
+| dine_in | 5076 | 336 | 1.354 | 9.7% | +0.04 | 0.940 | dow_4w_mean, lag_7d, is_holiday, hour, lag_1d |
+| delivery | 5076 | 336 | 1.381 | 10.0% | −0.30 | 0.927 | dow_4w_mean, lag_7d, lag_1d, is_holiday, day_of_year_sin |
+| takeaway | 5076 | 336 | 0.363 | 8.9% | −0.04 | 0.942 | dow_4w_mean, lag_7d, is_holiday, is_promo, hour |
+
+MAPE ≈ 10% across all channels matches the 10% multiplicative noise injected by the generator — the model has effectively reached the irreducible-noise floor on training-distribution data. The persistent **−0.30 bias on delivery** is the regime shift (FEAT-001: delivery base doubles at day 200, embedded in the train set but only partially carried by lag features into the validation window). This is **exactly the signal the SGD residual layer is designed to absorb**, and gives us a clean before/after story for the demo.
+
+**Deviation from initial plan.** None. Matches `PLANNING.md §6.1`.
+
+**Alternatives considered.**
+- *Single combined model with `channel` as a categorical feature.* Rejected — would force the model to learn channel-conditioned coefficients on every interaction; per-channel models are simpler and let us inspect each booster independently.
+- *Deeper trees (`num_leaves=127`).* Rejected for now — current settings already at noise floor; deeper trees would overfit.
+
+**Implementation notes.**
+- `LgbmBase.fit` accepts an explicit `categorical` list; defaults to `"auto"` if none provided.
+- `predict` always uses `best_iteration` from early stopping.
+- `feature_importance` returns a dict keyed by feature name for direct use in the dashboard's coefficient inspector.
+- Replaced deprecated `datetime.utcnow()` with `datetime.now(UTC)` after first run produced warnings.
+
+**Rollback plan.** Delete `artifacts/models/base_*` and `DELETE FROM model_registry WHERE type LIKE 'lgbm_base_%'`. Revert files.
+
+**Follow-ups.**
+- FEAT-005 — SGD residual warm-start. The delivery-bias gap is the smoking gun the residual must close.
+- Eventually: weekly automated retrain via `app/scheduler.py` (stub already in place).
 
 <!-- Add new entries below this line. -->
