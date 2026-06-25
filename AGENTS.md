@@ -380,4 +380,90 @@ MAPE ≈ 10% across all channels matches the 10% multiplicative noise injected b
 - FEAT-005 — SGD residual warm-start. The delivery-bias gap is the smoking gun the residual must close.
 - Eventually: weekly automated retrain via `app/scheduler.py` (stub already in place).
 
+### FEAT-005 — Dataset + validation visualization (dashboard pages 1 & 2)
+
+- **Date:** 2026-06-25
+- **Author:** Day 2 follow-up
+- **Status:** Shipped
+- **Type:** Feature
+
+**Context.** Before pushing the SGD residual layer, we wanted human eyes on (a) the synthetic dataset itself, to confirm the injected drivers are visible at a glance, and (b) the last-28-day validation window that produced the FEAT-004 numbers, so the metrics aren't taken on faith.
+
+**Decision.** Implement two full Streamlit pages and one supporting evaluation module.
+
+- `app/eval/holdout.py` — `load_latest_base(channel)`, `predict_holdout(channel, n_days)`, `predict_holdout_all_channels()`, `summary_metrics(df)`. Reproduces the exact split used by `train_base.train_channel`.
+- `dashboard/streamlit_app.py` — wire two real pages:
+  - **Dataset Explorer** — date and channel filters; daily covers per channel with event overlay and regime-shift marker; average covers by hour and by day-of-week; DOW × hour heatmap; rain-bucket bar chart.
+  - **Validation (last 28d)** — per-channel summary table; actual vs predicted hourly traces; daily MAE; residual histograms; hourly profile overlay.
+
+Remaining 5 pages from `PLANNING.md §10` remain stubs.
+
+**Verification.** Holdout helper reproduces FEAT-004 numbers exactly:
+
+```
+          MAE    MAPE   Bias    R²    n
+dine_in   1.354  9.7%  +0.04  0.940  336
+delivery  1.381  10.0% −0.30  0.927  336
+takeaway  0.363  8.9%  −0.04  0.942  336
+```
+
+Dashboard launches cleanly (`streamlit run dashboard/streamlit_app.py`) and renders both pages without errors. Cached loaders called standalone return correct shapes: observations (16488, 6), weather (10992, 5), events (67, 3), holdout (1008, 7).
+
+**Deviation from initial plan.** None. `PLANNING.md §10` page numbering reshuffled: Dataset Explorer and Validation pages are inserted ahead of the originally-listed pages. The original five pages still exist as stubs and will be filled in later.
+
+**Alternatives considered.**
+- *Standalone Jupyter notebook for EDA.* Rejected — the demo audience interacts with a dashboard, not a notebook; building the EDA inside the Streamlit app means the same artifact serves both the developer's sanity check and the demo.
+- *Static matplotlib PNGs dumped to disk.* Rejected — non-interactive, no filtering, doesn't show off the dataset.
+
+**Implementation notes.**
+- Plotly + Streamlit. Cached data loaders (`@st.cache_data`) — repeated page switches stay fast.
+- `CHANNEL_COLORS` central palette for consistency across both pages.
+- Regime-shift date is derived from `app.data.generator.START_DATE + REGIME_SHIFT_DAY` rather than hardcoded, so it tracks the generator constants.
+- Event overlay uses thin dotted vertical lines per type (purple=holiday, gold=local_event, light-blue=promo) — visible without dominating the chart.
+- Required new deps: `streamlit==1.58.0`, `plotly==6.8.0`. Already in `requirements.txt`.
+
+**Rollback plan.** Revert `dashboard/streamlit_app.py` and delete `app/eval/holdout.py`. No data or model changes.
+
+**Follow-ups.**
+- FEAT-006 — SGD residual warm-start + `partial_fit` endpoint; once shipped, add the SGD-corrected line to the Validation page so the residual layer's contribution is visible alongside the base.
+- Eventually: hook the Validation page into a model-version selector so old vs new models can be compared visually.
+
+### FEAT-006 — Data insights doc + static figure generator
+
+- **Date:** 2026-06-25
+- **Author:** Day 2 follow-up
+- **Status:** Shipped
+- **Type:** Doc
+
+**Context.** The Dataset Explorer page in the dashboard surfaces customer-behaviour signals (calendar cycles, weather × channel split, regime shift). Capturing the conclusions as a standalone document — with embedded figures — makes the dataset's properties reviewable without launching Streamlit, and gives a stable reference the modelling work can cite.
+
+**Decision.**
+
+- New module `app/eval/insights.py` that mirrors the Dataset Explorer chart set and writes seven PNGs into `docs/figures/`. Re-runnable on every dataset regeneration.
+- New doc `docs/DATA_INSIGHTS.md` that walks each chart, calls out the customer-behaviour interpretation, and lists operational implications and dataset limitations.
+- Added `kaleido==1.3.0` to the dev environment (Plotly static export).
+
+Charts produced:
+1. `01_daily_covers.png` — full-history daily covers per channel, with regime-shift marker and event overlays.
+2. `02_hour_of_day.png` — average covers by hour, per channel.
+3. `03_day_of_week.png` — average covers by day-of-week, per channel.
+4. `04_heatmap_{dine_in,delivery,takeaway}.png` — three hour × DOW heatmaps.
+5. `05_rain_effect.png` — covers vs rain bucket, per channel.
+
+**Deviation from initial plan.** None. `PLANNING.md` did not require this document; it is supplementary reference material.
+
+**Alternatives considered.**
+- *Just rely on the dashboard's Dataset Explorer.* Rejected — interactive only, no stable artefact to reference in design discussions.
+- *Embed Plotly HTML files instead of PNGs.* Rejected — heavy, harder to render in code-review tools and GitHub previews.
+
+**Implementation notes.**
+- `app/eval/insights.py` re-uses the same color palette, bin breakpoints, and grouping logic as `dashboard/streamlit_app.py`, so the PNGs match what the user sees in the dashboard.
+- `REGIME_SHIFT_DATE` derived from `START_DATE + timedelta(days=REGIME_SHIFT_DAY)` — fix from a first attempt that used `.date()` on an already-`date` object.
+- `kaleido` 1.3.x requires no additional system dependencies on Windows.
+
+**Rollback plan.** Delete `docs/DATA_INSIGHTS.md`, `docs/figures/`, and `app/eval/insights.py`. Uninstall kaleido if desired. No data or model changes.
+
+**Follow-ups.**
+- When the SGD residual layer ships (FEAT-007), add a `before/after` figure showing the residual closing the delivery regime-shift gap, and append a section to `DATA_INSIGHTS.md` linking the dataset's non-stationarity to the layered architecture decision.
+
 <!-- Add new entries below this line. -->
