@@ -190,4 +190,104 @@ promo, no_show_group, normal, other
 
 ---
 
+### FEAT-001 — Synthetic data generator
+
+- **Date:** 2026-06-25
+- **Author:** Day 1 implementation
+- **Status:** Shipped
+- **Type:** Data
+
+**Context.** No real restaurant data available for the POC. Need a reproducible synthetic dataset whose ground-truth drivers are known, so the eval harness can later score how close the trained models get to the true coefficients.
+
+**Decision.** Implement `app/data/generator.py` producing 15 months (≈ 457 days) of hourly data across three channels (dine_in, delivery, takeaway). All injected drivers and their numeric values are kept as module-level constants at the top of the file so the eval harness can compare *learned vs ground truth*.
+
+Drivers injected:
+
+- **Day-of-week multiplier** — weekend ≈ 1.30–1.40, midweek ≈ 0.80–0.95.
+- **Hour-of-day curve** — service window 11:00–22:00 with lunch peak (12–14) and dinner peak (18–21).
+- **Weather** — seasonal sinusoid for temperature + diurnal cycle + storm bursts. Rain coefficient differs by channel: `dine_in = −0.06`, `delivery = +0.03`, `takeaway = −0.01` per mm.
+- **Holidays** — 10 fixed dates, `HOLIDAY_MULT = 1.45`.
+- **Local events** — ~5% of days, severity in [0.5, 1.0], `EVENT_LOCAL_MULT = 1.25`.
+- **Promos** — ~10% of days, `PROMO_MULT = 1.18`.
+- **Regime shift** — at `REGIME_SHIFT_DAY = 200`, delivery volume doubles. The other two channels are unaffected. This is the scenario the demo's MAE-convergence story is built around.
+- **Noise** — ~10% multiplicative Gaussian.
+
+Also seeded:
+
+- 12 ingredients with realistic shelf-life and lead-time values.
+- 8 menu items with full recipe BOM mapping to ingredients.
+- Daily dish-mix history via Dirichlet sampling around `MIX_BASE` (each day sums to 1.0).
+- 4 staff roles with covers-per-hour throughput and minimum floor staffing.
+
+**Verification.** Ran `python -m app.data.generator` and confirmed via direct SQL:
+
+| Check | Expected | Observed |
+|---|---|---|
+| Regime shift on delivery | ~2.0× | 1.99× |
+| Regime shift on dine_in / takeaway | ~1.0× | 0.99× / 1.00× |
+| Weekend / weekday ratio (dine_in) | ~1.4× | 1.41× |
+| Rain hurts dine_in | < 1.0 | 0.69 |
+| Rain helps delivery | > 1.0 | 1.15 |
+| Mix shares sum to 1.0 per day | 1.0000 | 1.0000 |
+| Null `covers` rows | 0 | 0 |
+
+**Deviation from initial plan.** None.
+
+**Alternatives considered.**
+- *Pulling real restaurant data.* Rejected — none available, scope creep.
+- *Loading a Kaggle restaurant dataset.* Rejected — would not contain a known ground-truth coefficient set, eval would be ungrounded.
+- *Generating from a single random walk per channel.* Rejected — would not exercise the model's ability to disentangle drivers (weather × channel interactions are the point).
+
+**Implementation notes.**
+- One module, no external generators (matches small-scope constraint).
+- Deterministic via `np.random.default_rng(seed=42)`.
+- `init_db()` drops and recreates the DB to keep regeneration idempotent.
+- Service hours encoded as `OPEN_HOUR = 11`, `CLOSE_HOUR = 23` (exclusive).
+- Ingredient/recipe/mix-history seeding kept in the same file for now; will extract if it grows.
+
+**Rollback plan.** Delete `artifacts/rms.db` and revert `app/data/generator.py`. No downstream dependencies yet.
+
+**Follow-ups.**
+- FEAT-002 — Implement `app/features/feature_builder.py` (consumes this data).
+- FEAT-003 — Train LightGBM base model per channel (FEAT-002 dependency).
+- Eventually: extract menu/ingredient/recipe seeding into a separate `seed.py` once the schema stabilizes.
+
+### FEAT-002 — Cap synthetic dataset at current date (2026-06-25)
+
+- **Date:** 2026-06-25
+- **Author:** Day 1 follow-up
+- **Status:** Shipped
+- **Type:** Data
+
+**Context.** FEAT-001 used a duration-based generator (`MONTHS = 15` from `START_DATE = 2025-04-01`), which ran ~7 days past the present (the last row was `2026-07-02`). User reviewed the dataset in the SQLite Viewer VS Code extension and asked that no rows live in the future.
+
+**Decision.** Replace duration-based generation with an explicit, inclusive `[START_DATE, END_DATE]` interval.
+
+- `END_DATE = date(2026, 6, 25)` — equal to the current real-world date.
+- `START_DATE = date(2025, 3, 25)` — chosen to preserve ~15 months of history.
+- `_date_range(start, end)` now produces an inclusive day list and raises on `end < start`.
+- `generate()` signature becomes `generate(start=START_DATE, end=END_DATE, seed=42, db_path=DB_PATH)`.
+- `MONTHS` constant removed.
+
+**Deviation from initial plan.** `PLANNING.md §5` describes "12–18 months of hourly observations" without specifying an end-date discipline. This entry formalizes: *no synthetic timestamp may exceed the current real-world date.* For the POC this is a one-shot cap; once real ingestion exists it becomes a natural invariant.
+
+**Alternatives considered.**
+- *Post-generation filter that deletes future rows.* Rejected — wastes work and requires keeping deletion logic in sync with the schema.
+- *Keep the future rows but mark them "test-only".* Rejected — pollutes every downstream query with a where-clause; clarity loss outweighs the optionality.
+
+**Verification.** Ran `python -m app.data.generator`. Then:
+
+| Check | Result |
+|---|---|
+| `MAX(substr(ts,1,10))` on `observations` | `2026-06-25` |
+| Rows with `ts > '2026-06-25T22:00:00'` | `0` |
+| Total observation rows | `16,488` (was 16,452) |
+| Total days | `458` (was 457) |
+| Regime-shift day | unchanged (`day 200 = 2025-10-11`) |
+
+**Rollback plan.** Revert `app/data/generator.py` to FEAT-001 version; re-run the generator. No schema change involved.
+
+**Follow-ups.**
+- When real ingestion is added, treat "max timestamp ≤ now" as an ingestion-side invariant rather than a generator-side one.
+
 <!-- Add new entries below this line. -->
