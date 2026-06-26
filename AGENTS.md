@@ -638,4 +638,61 @@ The shelf-life clip is doing the right thing: tomato and beef demand exceeds the
 - Dashboard `Order Sheet` page (FEAT-012) renders this table with an "Approve order" button (no-op for POC).
 - Long-run: model incoming deliveries; allow per-channel mix; integrate supplier API.
 
+### FEAT-011 — Corrections + metrics + training APIs fully wired
+
+- **Date:** 2026-06-26
+- **Author:** Day 2 PM
+- **Status:** Shipped
+- **Type:** API change
+
+**Context.** Three router modules (`corrections`, `metrics`, `training`) existed as stubs since FEAT-000. With the SGD residual layer live (FEAT-007), the cover prediction service in place (FEAT-008), and registry persistence working, the routers can be filled in. This is the HTTP surface restaurant managers (and the dashboard) talk to.
+
+**Decision.**
+
+- **`POST /corrections`** — full end-to-end loop:
+  1. Validate the reason tag against `REASON_TAGS`.
+  2. Load latest base + SGD for the channel.
+  3. Build features for the corrected timestamp.
+  4. Compute `target_residual = actual − base_pred`; clip to `±clip_fraction × |base_pred|`.
+  5. `sgd.update` with the clipped target.
+  6. Persist the updated SGD pkl in place.
+  7. Insert/replace a row in `corrections`.
+  8. Return `CorrectionResult` containing base_pred, residual_pred before/after, raw vs clipped target, and the updated `n_updates`.
+
+- **`GET /metrics`** — per-channel rolling MAE/MAPE/bias/R² over the last `rolling_days` (default 30) computed by joining `predictions` and `observations`, plus `n_corrections` and `sgd_n_updates`.
+
+- **`GET /metrics/registry`** — every row of `model_registry` sorted newest-first.
+
+- **`GET /metrics/coefficients`** — current SGD coefficients per channel, sorted by absolute magnitude. Drives the dashboard's Coefficient Inspector page.
+
+- **Training** endpoints (`POST /train/base`, `POST /train/sgd/reset`) were already wired; only verified working now.
+
+**Verification.** End-to-end TestClient run:
+
+- `POST /corrections {ts: 2026-06-25T19:00:00, channel: delivery, actual: 5.0, reason_tag: rain_heavy}` → 200.
+- Base pred 18.9, actual 5.0, raw target residual −13.9, clipped to −9.5 (50% cap working).
+- Residual prediction shifted from +0.20 → +0.11 (correct direction, small magnitude as expected for one SGD step).
+- `n_updates` went 5412 → 5413, persisted to pkl.
+- `corrections` table now has one delivery row.
+- `/metrics` reports `n_corrections=1` for delivery, `n_corrections=0` for the other channels.
+- `/metrics/registry` returns 6 rows (3 base + 3 SGD).
+- `/metrics/coefficients?channel=delivery` returns the live coefficient table with `base_pred` dominant.
+
+**Deviation from initial plan.** None. Matches `PLANNING.md §9`.
+
+**Alternatives considered.**
+- *Async background `partial_fit` task.* Rejected — partial_fit is millisecond-cheap; making it synchronous keeps the response semantically clean (the client sees the post-update state immediately).
+- *Append-only corrections (no idempotency).* Rejected — `(ts, channel)` is the natural identity; `INSERT OR REPLACE` matches the `AGENTS.md` API convention that `POST /corrections` is idempotent.
+
+**Implementation notes.**
+- Reason-tag validation is double-defended: Pydantic `Literal` type + an explicit membership check against `REASON_TAGS`. Pydantic catches typo strings before the handler runs; the explicit check catches drift if the Literal and the constant ever go out of sync.
+- `_evaluate` reused from `app/train/train_base.py` rather than duplicating the MAE/R²/bias math.
+- The corrections endpoint loads model and prediction state per request — cheap given current scale (single SQLite, pkl on local disk). At scale we'd cache.
+
+**Rollback plan.** Revert `app/api/corrections.py` and `app/api/metrics.py`. No data migration.
+
+**Follow-ups.**
+- FEAT-012 — dashboard Corrections page POSTs to this endpoint and refreshes the chart.
+- Eventually: per-correction audit log (who, when, source) once auth exists.
+
 <!-- Add new entries below this line. -->
