@@ -695,4 +695,46 @@ The shelf-life clip is doing the right thing: tomato and beef demand exceeds the
 - FEAT-012 — dashboard Corrections page POSTs to this endpoint and refreshes the chart.
 - Eventually: per-correction audit log (who, when, source) once auth exists.
 
+### FEAT-012 — Remaining dashboard pages live
+
+- **Date:** 2026-06-26
+- **Author:** Day 2 PM
+- **Status:** Shipped
+- **Type:** Feature
+
+**Context.** FEAT-005 shipped two pages (Dataset Explorer, Validation). With the prediction services (FEAT-008/9/10) and the corrections API (FEAT-011) now live, the five remaining `PLANNING.md §10` pages can be wired to real data.
+
+**Decision.**
+
+- **Today / Tomorrow** — date picker + scenario reason tag selector → stacked hourly bar of forecast covers per channel, channel totals, recommended staffing table with role person-hours and peak headcount, expandable base-vs-residual breakdown.
+- **Order Sheet** — date + horizon slider → ingredient table with stock, need, shelf cap, recommended order. Warns when shelf-life cap is binding. No-op "Approve order" button.
+- **Corrections** — form (date, hour, channel, actual, reason tag) → calls `app.api.corrections.submit_correction` in-process; success view shows base prediction, residual before vs after, raw vs clipped target, and updated `n_updates`. Recent corrections table below.
+- **Model Health** — validation summary table; activity metrics (per-channel correction count, SGD update count); daily MAE chart on holdout; *Retrain base* and *Reset SGD* buttons run the trainers in-process and show summary JSON; full `model_registry` table.
+- **Coefficient Inspector** — channel selector → side-by-side: LightGBM feature importance (gain) horizontal bar and signed SGD coefficient bar (green positive, red negative).
+
+The dashboard calls service-level Python functions directly (not via HTTP) — POC simplicity. The same functions are also exposed over the API (`app/main.py`), so external clients have parity.
+
+**Verification.** Streamlit script imports clean, all 7 page handlers registered:
+
+```
+['Today / Tomorrow', 'Order Sheet', 'Corrections', 'Model Health',
+ 'Coefficient Inspector', 'Dataset Explorer', 'Validation (last 28d)']
+```
+
+**Deviation from initial plan.** None. `PLANNING.md §10` page set delivered in full.
+
+**Alternatives considered.**
+- *Multi-page Streamlit (`pages/` directory).* Rejected — sidebar radio router stays simpler for a 7-page POC; multi-page would need shared-state plumbing.
+- *Call the FastAPI server from Streamlit via httpx.* Rejected — adds a process to manage and a round-trip per click without benefit at POC scope.
+
+**Implementation notes.**
+- Long-lived state mutations (corrections submission, retrains) call `st.cache_data.clear()` so subsequent reads see fresh data.
+- Coefficient Inspector reads `feature_importance(importance_type="gain")` directly from the LightGBM booster — no separate cache.
+- `Correction` Pydantic model is imported and instantiated directly; the dashboard never touches raw dicts.
+
+**Rollback plan.** Revert `dashboard/streamlit_app.py`. The previous version still rendered Dataset Explorer + Validation.
+
+**Follow-ups.**
+- FEAT-013 — backtest convergence chart will live on the Model Health page.
+
 <!-- Add new entries below this line. -->
