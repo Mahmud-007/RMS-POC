@@ -830,4 +830,44 @@ Reading:
 - Add a `pytest` step to a CI workflow once the project moves beyond POC.
 - Pin every dependency exactly once a release branch is cut.
 
+### FEAT-015 — Free-tier deployment readiness (Streamlit Cloud + HF Spaces)
+
+- **Date:** 2026-06-26
+- **Author:** Day 3 follow-up
+- **Status:** Shipped
+- **Type:** Infra
+
+**Context.** The POC is being deployed to a free-tier host. Both Streamlit Community Cloud and Hugging Face Spaces have **ephemeral filesystems** on the free plan — every container restart wipes `artifacts/`. The app must bootstrap its own data + models on first run, with no manual setup steps for the deployer.
+
+**Decision.**
+
+- **Idempotent bootstrap in `dashboard/streamlit_app.py`.** On script startup, if `artifacts/rms.db` does not exist, run `generate() → train_base() → init_sgd()` inline (in-process, not subprocess). Subsequent runs detect the DB and skip.
+- **Dockerfile updated for Hugging Face Spaces port convention.** Streamlit moved to port `7860` (HF's expected app port), FastAPI stays on `8000` for local Docker users. Single `EXPOSE 7860 8000`. `CMD` chains an idempotent bootstrap shell guard (`[ -f artifacts/rms.db ] || (...)`) before starting both processes.
+- **`.streamlit/config.toml`** added with `headless=true`, `fileWatcherType="none"` (reduces CPU on cloud), `gatherUsageStats=false`, and a light theme.
+- **HF Spaces YAML frontmatter** prepended to `README.md` (`title`, `emoji`, `colorFrom`, `colorTo`, `sdk: docker`, `app_port: 7860`). GitHub renders the doc skipping the frontmatter; HF reads it to configure the Space.
+
+**Verification.**
+
+- `streamlit_app.py` imports cleanly with 7 pages registered.
+- `pytest tests/` → 13 passed, 1 deprecation warning (unrelated, pre-existing).
+- Bootstrap path manually traced: first call generates ~16k rows, trains 3 LightGBM boosters and 3 SGD residuals (~30–45 seconds on a free Streamlit Cloud worker), then `cache_data` keeps subsequent page renders instant.
+
+**Deviation from initial plan.** `PLANNING.md §11` mentioned Fly.io free tier as the deploy target; Fly removed its free tier in late 2024. Plan-of-record now uses Streamlit Community Cloud (dashboard-only) or Hugging Face Spaces (full Docker), both still $0.
+
+**Alternatives considered.**
+- *External bootstrap step the deployer runs once.* Rejected — every free-tier restart loses state, which would force the deployer to re-run the bootstrap manually after each cold start. In-process bootstrap is hands-off.
+- *Bake `artifacts/rms.db` into the Docker image.* Rejected — couples the data version to the image; the bootstrap path also exercises the training pipeline on every cold start, which is a useful sanity check.
+- *Subprocess-based bootstrap.* Rejected — adds OS-level failure modes (PATH resolution, working directory) for no benefit when in-process calls are available.
+
+**Implementation notes.**
+- The bootstrap is guarded by a single `_ARTIFACT_DB.exists()` check. Race window if two users hit the cold app simultaneously is small (~30s during training); worst case both trigger training, the second overwrites identical artifacts. Not worth a lockfile for a POC demo.
+- On Hugging Face Spaces only one port is exposed to the public — Streamlit on 7860. FastAPI on 8000 is reachable only from inside the container (the dashboard calls services in-process anyway, so this is not a functional loss).
+- HF persistent storage at `/data` costs $5/month and was deliberately skipped — corrections submitted on the demo are lost when the Space sleeps (~48h inactivity). For a permanent demo URL with persistent state, switch to Render's free plan with a 1 GB free disk mounted at `/srv/artifacts`.
+
+**Rollback plan.** Revert `dashboard/streamlit_app.py`, `Dockerfile`, `.streamlit/config.toml`, and the `README.md` frontmatter block. The previous Fly.io-shaped Dockerfile still runs locally on port 8501.
+
+**Follow-ups.**
+- Add a `DEPLOY.md` with click-by-click steps once the first deploy target is chosen and verified end-to-end.
+- If demo users start losing corrections frequently, move to Render with a free persistent disk (1 GB free, mounted at `/srv/artifacts`).
+
 <!-- Add new entries below this line. -->
