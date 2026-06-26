@@ -790,4 +790,44 @@ Reading:
 - Scenario module for synthetic drift / promo events / staff-out impacts — useful for "what would the model have done if X happened" demos.
 - Backtest could optionally fork the production SGD as a "warm-corrected" variant, then compare against fresh.
 
+### FEAT-014 — Smoke tests, requirements pin polish, README rewrite
+
+- **Date:** 2026-06-26
+- **Author:** Day 2 PM
+- **Status:** Shipped
+- **Type:** Test
+
+**Context.** With every feature shipped, the POC needs (a) tests that guarantee the API surface and prediction services don't silently break, (b) a `requirements.txt` that actually matches what's running, and (c) a README that lets a new contributor reproduce the demo from scratch.
+
+**Decision.**
+
+- `tests/test_smoke.py` — 13 tests covering:
+  - `/health` returns OK.
+  - `/forecast/covers` for all channels and channel-filtered: shape, residual clip invariant (≤ 50 % of |base|), 12 hours per day, `final_pred ≥ 0`.
+  - `/forecast/staff` for a future date: hourly count and role coverage.
+  - `/forecast/orders` over an 8-day horizon: `recommended_order ≥ 0` and ≤ `max(raw_order, shelf_cap)`.
+  - `/forecast/orders` rejects `end < start` with 400.
+  - `POST /corrections` round-trip: target residual negative when actual < base; clipped magnitude ≤ 50 %; `n_updates` increments.
+  - `POST /corrections` rejects unknown `reason_tag` with 422 (Pydantic Literal).
+  - `/metrics`, `/metrics/registry`, `/metrics/coefficients?channel=delivery` return expected keys; SGD `base_pred` coefficient is among the top three by magnitude.
+  - Service-level checks for `app.predict.covers.predict_day` and `app.predict.orders.predict_orders`.
+
+- `requirements.txt` — relaxed exact pins to `>=` and added `kaleido` (Plotly static export for FEAT-006).
+
+- `README.md` — rewritten as the entry point: two-layer model picture, quick-start commands in order, demo flow walkthrough across all 7 dashboard pages, full API surface listing, Docker, tests, and the DoD checklist (all boxes ticked).
+
+**Verification.** `python -m pytest tests/ -v` → **13 passed**. Streamlit relaunch on port 8501 succeeds and serves all 7 pages.
+
+**Deviation from initial plan.** None. Matches `PLANNING.md §15` DoD items "smoke tests" and "README explains how to run, retrain, submit a correction".
+
+**Implementation notes.**
+- Tests assume the synthetic dataset is generated and both base + SGD trained. A first-time clone runs `python -m app.data.generator && python -m app.train.train_base && python -m app.train.init_sgd` (documented in the README quick-start).
+- `TestClient` (`starlette.testclient`) emits a `StarletteDeprecationWarning` about `httpx2` — surfaced as one warning but harmless; not chasing the migration in POC scope.
+
+**Rollback plan.** Revert `tests/test_smoke.py`, `README.md`, and the dependency relaxation in `requirements.txt`.
+
+**Follow-ups.**
+- Add a `pytest` step to a CI workflow once the project moves beyond POC.
+- Pin every dependency exactly once a release branch is cut.
+
 <!-- Add new entries below this line. -->
