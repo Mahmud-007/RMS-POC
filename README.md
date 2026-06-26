@@ -1,3 +1,13 @@
+---
+title: RMS POC
+emoji: 🍽️
+colorFrom: blue
+colorTo: orange
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Restaurant Management System (RMS) — Forecasting POC
 
 A forecasting + feedback-loop system for a single restaurant. Predicts hourly **covers**, **staffing**, and **ingredient orders**, then learns online from manager corrections. Built in 3–4 working days as a POC.

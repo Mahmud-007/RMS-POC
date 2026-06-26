@@ -20,6 +20,19 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+# Bootstrap data + models on first run (Streamlit Cloud / HF Spaces ephemeral disk).
+# Idempotent: skips if the artifact DB already exists.
+_ARTIFACT_DB = _REPO_ROOT / "artifacts" / "rms.db"
+if not _ARTIFACT_DB.exists():
+    print("[bootstrap] artifact db missing — generating dataset and training models")
+    from app.data.generator import generate as _generate_data
+    from app.train.init_sgd import run as _init_sgd
+    from app.train.train_base import run as _train_base
+    _generate_data()
+    _train_base()
+    _init_sgd()
+    print("[bootstrap] done")
+
 import sqlite3
 from datetime import date, datetime, time, timedelta
 
