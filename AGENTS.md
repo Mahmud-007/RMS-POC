@@ -558,4 +558,38 @@ End-to-end correction round trip (`update → predict`) verified on the delivery
 - FEAT-009 — staff service (derives directly from covers).
 - FEAT-010 — orders service (uses `predict_daily_totals`).
 
+### FEAT-009 — Staff prediction service
+
+- **Date:** 2026-06-26
+- **Author:** Day 2 PM
+- **Status:** Shipped
+- **Type:** Feature
+
+**Context.** Per `PLANNING.md §6.2`, staffing is a deterministic function of predicted covers: there is no ML in this module. The goal is to take the covers forecast and convert it into per-hour, per-role headcount that a manager can act on, plus a daily summary.
+
+**Decision.**
+
+- `app/predict/staff.predict_day(target)` — calls the covers service, joins with `staff_throughput`, computes per-hour headcount per role, returns hourly breakdown + daily person-hours + peak headcount per role.
+- `app/predict/staff.pack_shifts(needed_by_hour)` — greedy compression of adjacent same-headcount hours into shift blocks for the dashboard's suggested-schedule view. Full MIP-style optimization is explicitly out of scope.
+- **Role → channel map.** `server` and `host` scale with `dine_in` only; `line_cook` and `dishwasher` scale with the sum across all three channels. This is a one-restaurant assumption; richer venues would store this mapping in a table.
+- Headcount formula: `max(floor_min, ceil(covers_in_scope / covers_per_hour))`.
+
+**Verification.** Saturday 2026-06-27 forecast yields a sane shape: lunch peak around 13:00 (5 cooks, 3 servers, total covers ~61) and dinner peak around 19–20:00 (5 cooks, 3 servers, total covers ~68). Daily person-hours: server=27, line_cook=39, dishwasher=18, host=12. Shift packer emits 20 contiguous blocks across the four roles.
+
+**Deviation from initial plan.** None. Plan called for "rule-based, no ML" with `max(floor_min, ceil(...))` — implemented exactly.
+
+**Alternatives considered.**
+- *Linear programming for true cost-optimal shift packing.* Rejected — outside POC scope; greedy contiguous packing is sufficient to drive the dashboard view.
+- *Single `total_covers` driver for every role.* Rejected — over-staffs dine-in roles when delivery is high, under-staffs cooks at the same time. The role-channel split is a small correction that matches reality.
+
+**Implementation notes.**
+- Throughput values come from the `staff_throughput` seed (FEAT-001). Editing rows there will be reflected in the next request without any retraining.
+- Returned structure is the same shape the API and dashboard consume.
+
+**Rollback plan.** Revert `app/predict/staff.py`. The forecast/staff endpoint already imports the module symbolically; rolling back would leave it as a stub that raises `NotImplementedError`.
+
+**Follow-ups.**
+- Dashboard `Today / Tomorrow` page (FEAT-012) renders the hourly headcount as a stacked bar.
+- Eventually: support shift cost minimization once labor cost data exists.
+
 <!-- Add new entries below this line. -->
