@@ -31,6 +31,8 @@ import streamlit as st
 
 from app.api.corrections import Correction, submit_correction
 from app.data.generator import REGIME_SHIFT_DAY, START_DATE
+from app.eval.backtest import run as run_backtest
+from app.eval.backtest import summary as backtest_summary
 from app.eval.holdout import (
     load_latest_base,
     load_latest_sgd,
@@ -108,6 +110,11 @@ def load_registry() -> pd.DataFrame:
             "SELECT version, type, trained_at, mae, r2, path FROM model_registry "
             "ORDER BY trained_at DESC", conn,
         )
+
+
+@st.cache_data(show_spinner=True)
+def load_backtest(n_days: int = 60) -> pd.DataFrame:
+    return run_backtest(n_days=n_days)
 
 
 # --------------------------------------------------------------------------------------
@@ -332,6 +339,34 @@ def page_model_health() -> None:
             st.success("SGD warm-started.")
             st.json({ch: {"warm_mae": v["warm_mae"], "n_train": v["n_train"]} for ch, v in result.items()})
             st.cache_data.clear()
+
+    # Backtest convergence
+    st.subheader("Backtest replay — naive vs base vs hybrid")
+    st.caption(
+        "Fresh SGD warm-started on data before the backtest window, then replayed "
+        "hour-by-hour with corrections fed back. On stationary data the hybrid tracks "
+        "the base closely; the value of the residual layer shows up on regime shifts "
+        "and via manager-tagged corrections submitted in real time."
+    )
+    bt_days = st.slider("Backtest window (days)", 14, 90, 60, key="bt_days")
+    bt = load_backtest(bt_days)
+    if bt.empty:
+        st.info("Not enough data in the window.")
+    else:
+        st.dataframe(
+            backtest_summary(bt).style.format("{:.3f}"),
+            use_container_width=True,
+        )
+        bt_ch = st.selectbox("Channel", CHANNELS, key="bt_channel")
+        sub = bt[bt["channel"] == bt_ch]
+        fig_bt = px.line(
+            sub, x="date", y="rolling_mae", color="variant",
+            color_discrete_map={"naive": "#888", "base": "#1f77b4", "hybrid": "#ff7f0e"},
+            markers=True,
+            labels={"rolling_mae": "7-day rolling MAE"},
+        )
+        fig_bt.update_layout(height=380, margin=dict(t=20, b=10))
+        st.plotly_chart(fig_bt, use_container_width=True)
 
     # Registry
     st.subheader("Model registry")
