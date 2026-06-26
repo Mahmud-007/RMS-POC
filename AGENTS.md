@@ -592,4 +592,50 @@ End-to-end correction round trip (`update → predict`) verified on the delivery
 - Dashboard `Today / Tomorrow` page (FEAT-012) renders the hourly headcount as a stacked bar.
 - Eventually: support shift cost minimization once labor cost data exists.
 
+### FEAT-010 — Ingredient orders service
+
+- **Date:** 2026-06-26
+- **Author:** Day 2 PM
+- **Status:** Shipped
+- **Type:** Feature
+
+**Context.** Per `PLANNING.md §6.3`, the third forecast product. Takes the cover forecast, applies the historical dish mix and recipe BOM, subtracts current stock, then clips by shelf life × usage rate so we never order more than the kitchen can consume before spoilage.
+
+**Decision.**
+
+- `app/predict/orders.predict_orders(start, end, db_path)` — per-ingredient order quantity across the window. End is inclusive.
+- `app/predict/orders.horizon_for_ingredients(db_path)` — default horizon = `max(lead_time) + SAFETY_DAYS` (1 day).
+- Mix sourced from `mix_history` over the last 28 days, averaged per item and renormalized.
+- `incoming` deliveries are not yet modeled — POC assumption is no orders in flight. Adding incoming is a one-liner once a deliveries table exists.
+
+**Verification.** Horizon = 8 days (max lead time = 7, +1 safety). For 2026-06-26 → 2026-07-03 the recommended orders look operationally sensible:
+
+| Ingredient | Stock | Need | Shelf cap | Recommended | Note |
+|---|---|---|---|---|---|
+| Flour | 25.0 | 191.5 | 2873 | **166.5** | long shelf, ordered to need |
+| Tomato | 15.0 | 163.0 | **101.9** | 101.9 | clipped by 5-day shelf life |
+| Beef | 8.0 | 186.9 | **93.4** | 93.4 | clipped by 4-day shelf life |
+| Cheese | 8.0 | 97.7 | 122.1 | 89.7 | within shelf cap |
+| Pasta | 30.0 | 113.2 | 2547 | 83.2 | long shelf, no waste risk |
+| Rice | 40.0 | 30.1 | 1375 | **0.0** | stock > need |
+
+The shelf-life clip is doing the right thing: tomato and beef demand exceeds the 8-day usage rate × shelf life, so the model recommends ordering only what we can use in time. The next order cycle catches up the rest.
+
+**Deviation from initial plan.** None. Algorithm matches plan exactly.
+
+**Alternatives considered.**
+- *Per-channel mix.* Rejected — dish mix per channel would be a more honest approach, but POC mix data is restaurant-level only. Easy to extend later.
+- *Bayesian safety stock.* Rejected — adds machinery the demo doesn't need; the shelf-life clip is the binding constraint, not stock-out risk.
+
+**Implementation notes.**
+- All math is pandas-vectorized; no per-ingredient loops in the hot path.
+- Result sorted by `recommended_order` descending so the dashboard's order sheet leads with the biggest line items.
+- `horizon_for_ingredients` reads from `ingredients` table so changing `lead_time_days` there propagates automatically.
+
+**Rollback plan.** Revert `app/predict/orders.py`. `/forecast/orders` falls back to the `NotImplementedError` stub.
+
+**Follow-ups.**
+- Dashboard `Order Sheet` page (FEAT-012) renders this table with an "Approve order" button (no-op for POC).
+- Long-run: model incoming deliveries; allow per-channel mix; integrate supplier API.
+
 <!-- Add new entries below this line. -->
