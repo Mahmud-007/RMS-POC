@@ -466,4 +466,58 @@ Charts produced:
 **Follow-ups.**
 - When the SGD residual layer ships (FEAT-007), add a `before/after` figure showing the residual closing the delivery regime-shift gap, and append a section to `DATA_INSIGHTS.md` linking the dataset's non-stationarity to the layered architecture decision.
 
+### FEAT-007 — SGD residual layer
+
+- **Date:** 2026-06-26
+- **Author:** Day 2 PM
+- **Status:** Shipped
+- **Type:** Model
+
+**Context.** The base LightGBM model carries a persistent −0.30 bias on delivery (FEAT-004), driven entirely by the October 2025 regime shift. Reaching the noise floor everywhere else is fine; carrying a known bias forward is not. The SGD residual is the architectural answer: a fast-adapting, interpretable layer that absorbs structural drift without forcing a full base retrain on every change.
+
+**Decision.**
+
+- `app/models/residual_sgd.SgdResidual` fully implemented: `warm_start`, `predict`, `update`, `save`, `load`, `coefficients`, `intercept`, `n_updates`.
+- `StandardScaler` fit during warm-start and persisted alongside the SGD model (SGD is scale-sensitive).
+- One SGD per channel, mirroring the per-channel base.
+- Feature surface (28 columns) = 17 base + 2 interactions (`rain_x_weekend`, `rain_x_dinner`) + `base_pred` + 8 reason-tag one-hots.
+- `REASON_TAGS` constant centralized in `app/features/feature_builder.py` and consumed by both API and trainer.
+- `append_residual_features(base_X, base_pred, reason_tag)` builds the residual input row(s) consistently for warm-start, inference, and corrections.
+- `residual_feature_names(include_interactions=True)` returns the canonical column order.
+- `app/train/init_sgd.run()` loads each channel's latest base, predicts on training data, computes residuals, warm-starts the SGD, persists pkl + writes `model_registry` row.
+- `app/eval/holdout.load_latest_sgd(channel)` mirrors `load_latest_base` for downstream code.
+
+**Verification.**
+
+Warm-start results (after one base retrain, three channels):
+
+| Channel | Base val MAE | SGD warm MAE (in-sample) | Residual std | Top SGD coefs (abs) |
+|---|---|---|---|---|
+| dine_in | 1.354 | 1.225 | 1.70 | base_pred, dow_4w_mean, lag_7d, is_holiday |
+| delivery | 1.381 | **0.908** | 1.32 | base_pred, lag_7d, dow_4w_mean, day_of_year_cos |
+| takeaway | 0.363 | 0.320 | 0.45 | base_pred, dow_4w_mean, lag_7d, is_holiday |
+
+Delivery's residual MAE dropping from 1.38 to **0.91** is the regime-shift bias closing. `base_pred` consistently emerges as the dominant residual coefficient: SGD is learning a calibration-style scaling of the base output.
+
+End-to-end correction round trip (`update → predict`) verified on the delivery channel: residual prediction shifted in the correct direction after `partial_fit` with a `rain_heavy`-tagged correction; `n_updates` incremented from 5412 to 5413; coefficients updated in place; pkl reload preserves state.
+
+**Deviation from initial plan.** None. Matches `PLANNING.md §3` and `§7`.
+
+**Alternatives considered.**
+- *LightGBM residual instead of SGD.* Rejected — no native per-sample online update; richer non-linearity not needed since the residuals are dominated by a linear calibration term (`base_pred` coef ≈ 1.2 on delivery).
+- *River-style streaming ML library.* Rejected — adds a dependency for capability we don't need at POC scope; SGDRegressor + StandardScaler is sufficient.
+- *No scaling.* Rejected — SGD diverges on un-scaled features in early experiments (large `dow_4w_mean` swamps small one-hots).
+
+**Implementation notes.**
+- Residual prediction is NOT clipped inside `SgdResidual.predict` — the caller (cover-prediction service) applies the ±50% base_pred cap so the cap is visible at the prediction-assembly site, not buried in the model.
+- Persisted via `joblib.dump`; full state dictionary so reload is faithful.
+- `warm_start` re-instantiates the underlying `SGDRegressor` to wipe prior coefficients; matches the "reset on base retrain" rule from `PLANNING.md §7`.
+
+**Rollback plan.** Delete `artifacts/models/sgd_*` and `DELETE FROM model_registry WHERE type LIKE 'sgd_residual_%'`. Revert files.
+
+**Follow-ups.**
+- FEAT-008 — cover prediction service (combines base + clipped residual).
+- FEAT-011 — `POST /corrections` endpoint wires manager input into `SgdResidual.update`.
+- FEAT-013 — backtest harness shows the residual reducing rolling MAE over time.
+
 <!-- Add new entries below this line. -->

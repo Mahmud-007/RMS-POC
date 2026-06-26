@@ -45,6 +45,18 @@ CATEGORICAL_FEATURES = ["condition_code", "dow", "hour", "month"]
 
 INTERACTION_FEATURES = ["rain_x_weekend", "rain_x_dinner"]
 
+# Closed-set reason tags submitted with corrections — used for SGD one-hots.
+REASON_TAGS: list[str] = [
+    "rain_heavy",
+    "rain_light",
+    "event_local",
+    "event_holiday",
+    "promo",
+    "no_show_group",
+    "normal",
+    "other",
+]
+
 # Lag history needed before the first usable training row
 LAG_WARMUP_DAYS = 28
 
@@ -229,15 +241,31 @@ def build_inference_row(
     return row[cols].reset_index(drop=True)
 
 
+def add_interaction_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Append rain_x_weekend and rain_x_dinner columns. Used by the residual layer."""
+    return _add_interactions(df)
+
+
 def append_residual_features(
     base_features: pd.DataFrame,
-    base_pred: float,
-    reason_tag: str,
-    reason_vocab: list[str],
+    base_pred: float | np.ndarray,
+    reason_tag: str | list[str],
+    reason_vocab: list[str] = REASON_TAGS,
 ) -> pd.DataFrame:
-    """Extend a base feature row with base_pred + reason-tag one-hots for SGD input."""
+    """Extend base features with interactions, base_pred, and reason-tag one-hots."""
     out = base_features.copy()
+    out = _add_interactions(out)
     out["base_pred"] = base_pred
+    tags = [reason_tag] * len(out) if isinstance(reason_tag, str) else list(reason_tag)
     for tag in reason_vocab:
-        out[f"reason_{tag}"] = int(reason_tag == tag)
+        out[f"reason_{tag}"] = [int(t == tag) for t in tags]
     return out
+
+
+def residual_feature_names(include_interactions: bool = True) -> list[str]:
+    cols = list(BASE_FEATURES)
+    if include_interactions:
+        cols += list(INTERACTION_FEATURES)
+    cols.append("base_pred")
+    cols += [f"reason_{t}" for t in REASON_TAGS]
+    return cols

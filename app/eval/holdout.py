@@ -15,6 +15,7 @@ import pandas as pd
 
 from app.features.feature_builder import build_training_frame
 from app.models.base_lgbm import LgbmBase
+from app.models.residual_sgd import SgdResidual
 from app.train.train_base import VALIDATION_DAYS
 
 DB_PATH = Path("artifacts/rms.db")
@@ -33,6 +34,21 @@ def load_latest_base(channel: str, db_path: Path = DB_PATH) -> LgbmBase:
     model = LgbmBase()
     model.load(row[0])
     return model
+
+
+def load_latest_sgd(channel: str, db_path: Path = DB_PATH) -> SgdResidual | None:
+    """Load the most recently registered SGD residual for a channel, or None if absent."""
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT path FROM model_registry WHERE type = ? "
+            "ORDER BY trained_at DESC LIMIT 1",
+            (f"sgd_residual_{channel}",),
+        ).fetchone()
+    if row is None:
+        return None
+    sgd = SgdResidual()
+    sgd.load(row[0])
+    return sgd
 
 
 def predict_holdout(
