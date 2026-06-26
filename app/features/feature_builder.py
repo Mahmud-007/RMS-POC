@@ -206,25 +206,40 @@ def build_inference_row(
     include_interactions: bool = False,
 ) -> pd.DataFrame:
     """Single-row feature frame for a future (ts, channel). Lags pulled from history."""
-    df = _load_panel(channel, db_path)
+    return build_inference_window([ts], channel, db_path, include_interactions).drop(columns=["ts"])
 
-    # Inject a placeholder row for the target ts if missing, so the pipeline computes lags for it
-    target_date = ts.strftime("%Y-%m-%d")
-    target_hour = ts.hour
-    if not ((df["date"] == target_date) & (df["hour"] == target_hour)).any():
-        placeholder = {
-            "ts": pd.Timestamp(ts),
-            "covers": np.nan,
-            "date": target_date,
-            "hour": target_hour,
-            "temp": np.nan,
-            "rain_mm": np.nan,
-            "condition": "clear",
-            "_ev_holiday": np.nan,
-            "_ev_local": np.nan,
-            "_ev_promo": np.nan,
-        }
-        df = pd.concat([df, pd.DataFrame([placeholder])], ignore_index=True)
+
+def build_inference_window(
+    timestamps: list[datetime],
+    channel: str,
+    db_path: Path = DB_PATH,
+    include_interactions: bool = False,
+) -> pd.DataFrame:
+    """Build a feature frame for multiple timestamps in one panel pass.
+
+    Future timestamps not present in the DB get placeholder rows with neutral weather
+    (clear, no rain) and no events — predictions made under that assumption.
+    """
+    df = _load_panel(channel, db_path)
+    target_set = {pd.Timestamp(t) for t in timestamps}
+    existing_pd = set(df["ts"].tolist())
+    new_rows = []
+    for ts_pd in target_set:
+        if ts_pd not in existing_pd:
+            new_rows.append({
+                "ts": ts_pd,
+                "covers": np.nan,
+                "date": ts_pd.strftime("%Y-%m-%d"),
+                "hour": ts_pd.hour,
+                "temp": 18.0,
+                "rain_mm": 0.0,
+                "condition": "clear",
+                "_ev_holiday": np.nan,
+                "_ev_local": np.nan,
+                "_ev_promo": np.nan,
+            })
+    if new_rows:
+        df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)
         df = df.sort_values("ts").reset_index(drop=True)
 
     df = _add_calendar(df)
@@ -234,11 +249,9 @@ def build_inference_row(
     if include_interactions:
         df = _add_interactions(df)
 
-    row = df[df["ts"] == pd.Timestamp(ts)]
-    if row.empty:
-        raise ValueError(f"No row produced for ts={ts}, channel={channel}")
-    cols = BASE_FEATURES + (INTERACTION_FEATURES if include_interactions else [])
-    return row[cols].reset_index(drop=True)
+    out = df[df["ts"].isin(target_set)].copy().sort_values("ts").reset_index(drop=True)
+    cols = ["ts"] + list(BASE_FEATURES) + (list(INTERACTION_FEATURES) if include_interactions else [])
+    return out[cols]
 
 
 def add_interaction_features(df: pd.DataFrame) -> pd.DataFrame:

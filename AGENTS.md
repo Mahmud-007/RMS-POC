@@ -520,4 +520,42 @@ End-to-end correction round trip (`update → predict`) verified on the delivery
 - FEAT-011 — `POST /corrections` endpoint wires manager input into `SgdResidual.update`.
 - FEAT-013 — backtest harness shows the residual reducing rolling MAE over time.
 
+### FEAT-008 — Covers prediction service + API endpoint
+
+- **Date:** 2026-06-26
+- **Author:** Day 2 PM
+- **Status:** Shipped
+- **Type:** Feature
+
+**Context.** The base and residual now exist independently — they need an assembly point that combines them into the final forecast and exposes it over HTTP. Per `PLANNING.md §3`: `final = base + clip(residual, ±50% base_pred)`.
+
+**Decision.**
+
+- `app/predict/covers.predict_day(target, channel, reason_tag, db_path)` — hourly forecast per channel for one date. Loads latest base + SGD, runs both, clips residual by `sgd.clip_fraction × |base_pred|`, floors final at zero.
+- `app/predict/covers.predict_daily_totals(start, end, channel)` — daily totals across a window; consumed by the ingredient-orders module.
+- `app/features/feature_builder.build_inference_window(timestamps, channel, ...)` — new batch helper. One `_load_panel` call serves all hours of a day, instead of N panel loads. `build_inference_row` now wraps the batch helper.
+- `app/api/forecast.py` — three endpoints wired: `/covers`, `/staff`, `/orders`. The covers endpoint accepts an optional `reason_tag` query for what-if scenarios.
+
+**Verification.**
+
+- `predict_day(2026-06-28)` returns 12-hour × 3-channel forecast with consistent shapes; Saturday dine-in totals roughly 220 vs ~207 on weekdays, matching the day-of-week pattern.
+- `/forecast/covers?target=2026-06-28&channel=delivery` returns 200 with `{base_pred, residual_raw, residual_pred, final_pred}` per hour.
+
+**Deviation from initial plan.** None.
+
+**Alternatives considered.**
+- *Hard-clip residual inside `SgdResidual.predict`.* Rejected — keeping the cap visible at the assembly site makes the rule auditable in one place and lets `residual_raw` flow through for debugging.
+- *Per-hour model loading.* Rejected for obvious cost reasons — base/SGD loaded once per channel per request.
+
+**Implementation notes.**
+- Future-dated requests use neutral weather (`temp=18°C`, `rain_mm=0`, `condition="clear"`) and no events as the placeholder for missing rows — the model returns its baseline forecast.
+- `residual_raw` is exposed alongside `residual_pred` so the dashboard can show "what the SGD wanted to predict" vs "what we let through after the cap".
+- Staff and orders endpoints are wired to their service modules; service implementations land in FEAT-009 / FEAT-010.
+
+**Rollback plan.** Revert `app/predict/covers.py`, `app/api/forecast.py`, and the `build_inference_window` block in `feature_builder.py`. No model or data changes.
+
+**Follow-ups.**
+- FEAT-009 — staff service (derives directly from covers).
+- FEAT-010 — orders service (uses `predict_daily_totals`).
+
 <!-- Add new entries below this line. -->
