@@ -52,7 +52,7 @@ from app.eval.holdout import (
     predict_holdout_all_channels,
     summary_metrics,
 )
-from app.features.feature_builder import REASON_TAGS
+from app.features.feature_builder import REASON_TAGS, derive_reason_tags
 from app.predict.covers import predict_day as predict_covers
 from app.predict.orders import horizon_for_ingredients, predict_orders
 from app.predict.staff import predict_day as predict_staff
@@ -502,17 +502,84 @@ def page_dataset_explorer() -> None:
         st.plotly_chart(fig3, use_container_width=True)
 
     st.subheader("Hour × Day-of-week heatmap")
-    ch_pick = st.selectbox("Channel", selected_channels or list(CHANNELS), key="heatmap_ch")
-    heat_src = obs_f[obs_f["channel"] == ch_pick]
-    if not heat_src.empty:
+    st.caption("Pick a channel and a scenario. Scenario filters rows by the same rules the SGD warm-start uses (rain_mm, holidays, events, promos).")
+
+    # Build a scenario column on the filtered observations.
+    ev_pivot = events.pivot_table(
+        index="date", columns="type", values="severity", aggfunc="max",
+    ).reset_index()
+    for col in ("holiday", "local_event", "promo"):
+        if col not in ev_pivot.columns:
+            ev_pivot[col] = np.nan
+    ev_pivot = ev_pivot.rename(columns={
+        "holiday": "_ev_holiday", "local_event": "_ev_local", "promo": "_ev_promo",
+    })[["date", "_ev_holiday", "_ev_local", "_ev_promo"]]
+
+    heat_all = obs_f.merge(weather, on=["date", "hour"], how="left").merge(ev_pivot, on="date", how="left")
+    heat_all["is_holiday"] = heat_all["_ev_holiday"].notna().astype(int)
+    heat_all["is_local_event"] = heat_all["_ev_local"].notna().astype(int)
+    heat_all["is_promo"] = heat_all["_ev_promo"].notna().astype(int)
+    heat_all["rain_mm"] = heat_all["rain_mm"].fillna(0.0)
+    heat_all["scenario"] = derive_reason_tags(heat_all)
+
+    col_h1, col_h2 = st.columns(2)
+    with col_h1:
+        ch_pick = st.selectbox("Channel", selected_channels or list(CHANNELS), key="heatmap_ch")
+    with col_h2:
+        scenario_options = ["all"] + sorted(heat_all["scenario"].unique().tolist())
+        sc_pick = st.selectbox("Scenario", scenario_options, key="heatmap_sc")
+
+    heat_src = heat_all[heat_all["channel"] == ch_pick]
+    if sc_pick != "all":
+        heat_src = heat_src[heat_src["scenario"] == sc_pick]
+
+    info_cols = st.columns(3)
+    info_cols[0].metric("Rows in slice", f"{len(heat_src):,}")
+    info_cols[1].metric("Mean covers", f"{heat_src['covers'].mean():.2f}" if not heat_src.empty else "—")
+    info_cols[2].metric("Median covers", f"{heat_src['covers'].median():.2f}" if not heat_src.empty else "—")
+
+    if heat_src.empty:
+        st.warning("No data in this (channel, scenario) slice — pick a less restrictive filter.")
+    else:
         heat = heat_src.groupby(["dow", "hour"], as_index=False)["covers"].mean()
         heat_p = heat.pivot(index="dow", columns="hour", values="covers")
-        heat_p.index = [DOW_NAMES[i] for i in heat_p.index]
-        fig4 = px.imshow(heat_p, color_continuous_scale="Viridis",
-                         labels=dict(color="avg covers", x="hour", y="dow"),
-                         aspect="auto")
-        fig4.update_layout(height=320, margin=dict(t=30, b=10))
+        heat_p = heat_p.reindex(index=range(7))
+        heat_p.index = DOW_NAMES
+        fig4 = px.imshow(
+            heat_p, color_continuous_scale="Viridis",
+            labels=dict(color="avg covers", x="hour", y="day"),
+            aspect="auto",
+        )
+        fig4.update_layout(height=340, margin=dict(t=30, b=10))
         st.plotly_chart(fig4, use_container_width=True)
+
+        if sc_pick != "all":
+            # Side-by-side: scenario vs all-data baseline for the same channel
+            base_heat = heat_all[heat_all["channel"] == ch_pick]
+            base_avg = base_heat.groupby(["dow", "hour"], as_index=False)["covers"].mean()
+            base_p = base_avg.pivot(index="dow", columns="hour", values="covers").reindex(index=range(7))
+            delta = (heat_p.values - base_p.values)
+            delta_df = pd.DataFrame(delta, index=DOW_NAMES, columns=heat_p.columns)
+            st.markdown(f"**Δ vs all-scenarios baseline** for `{ch_pick}` — positive = scenario is busier than average, negative = slower")
+            fig_delta = px.imshow(
+                delta_df, color_continuous_scale="RdBu_r", zmin=-abs(delta_df.values).max(), zmax=abs(delta_df.values).max(),
+                labels=dict(color="Δ covers", x="hour", y="day"),
+                aspect="auto",
+            )
+            fig_delta.update_layout(height=340, margin=dict(t=10, b=10))
+            st.plotly_chart(fig_delta, use_container_width=True)
+
+    with st.expander("Row count by scenario (current channel)"):
+        sc_counts = (
+            heat_all[heat_all["channel"] == ch_pick]
+            .groupby("scenario").size().reset_index(name="rows")
+            .sort_values("rows", ascending=False)
+        )
+        sc_counts["share"] = sc_counts["rows"] / sc_counts["rows"].sum()
+        st.dataframe(
+            sc_counts.style.format({"share": "{:.1%}"}),
+            use_container_width=True, hide_index=True,
+        )
 
     st.subheader("Rain effect on covers")
     merged = obs_f.merge(weather, on=["date", "hour"], how="left")
