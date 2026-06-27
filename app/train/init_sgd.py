@@ -17,6 +17,7 @@ from app.eval.holdout import load_latest_base
 from app.features.feature_builder import (
     append_residual_features,
     build_training_frame,
+    derive_reason_tags,
     residual_feature_names,
 )
 from app.models.residual_sgd import SgdResidual
@@ -43,8 +44,10 @@ def init_for_channel(channel: str, db_path: Path = DB_PATH, model_dir: Path = MO
     base_pred = base_model.predict(X_base)
     residual = y.to_numpy().astype(float) - np.asarray(base_pred, dtype=float)
 
-    # Build residual feature matrix: base features + interactions + base_pred + reason_tag=normal one-hots
-    X_sgd = append_residual_features(X_base, base_pred=base_pred, reason_tag="normal")
+    # Derive a reason tag per row from weather/events so each tag's coefficient
+    # gets real signal during warm-start (otherwise non-"normal" tags stay at zero).
+    derived_tags = derive_reason_tags(X_base)
+    X_sgd = append_residual_features(X_base, base_pred=base_pred, reason_tag=derived_tags)
     feature_names = residual_feature_names(include_interactions=True)
     X_sgd = X_sgd[feature_names]
 
@@ -61,6 +64,10 @@ def init_for_channel(channel: str, db_path: Path = DB_PATH, model_dir: Path = MO
     sgd.save(path)
     _register(version, channel, warm_mae, path, db_path)
 
+    tag_counts: dict[str, int] = {}
+    for t in derived_tags:
+        tag_counts[t] = tag_counts.get(t, 0) + 1
+
     return {
         "channel": channel,
         "version": version,
@@ -69,9 +76,13 @@ def init_for_channel(channel: str, db_path: Path = DB_PATH, model_dir: Path = MO
         "warm_mae": warm_mae,
         "residual_mean": float(np.mean(residual)),
         "residual_std": float(np.std(residual)),
+        "tag_distribution": tag_counts,
         "top_coefs": dict(sorted(
             sgd.coefficients.items(), key=lambda kv: abs(kv[1]), reverse=True,
         )[:5]),
+        "reason_coefs": {
+            k: v for k, v in sgd.coefficients.items() if k.startswith("reason_")
+        },
     }
 
 
@@ -85,6 +96,8 @@ def run() -> dict[str, dict]:
             f"res_std={r['residual_std']:.3f}  n={r['n_train']}"
         )
         print(f"           top coefs: {r['top_coefs']}")
+        print(f"           reason coefs: {r['reason_coefs']}")
+        print(f"           tag dist: {r['tag_distribution']}")
     return out
 
 

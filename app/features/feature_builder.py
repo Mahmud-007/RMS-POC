@@ -282,3 +282,33 @@ def residual_feature_names(include_interactions: bool = True) -> list[str]:
     cols.append("base_pred")
     cols += [f"reason_{t}" for t in REASON_TAGS]
     return cols
+
+
+def derive_reason_tags(X: pd.DataFrame) -> list[str]:
+    """Map each base-feature row to a historical reason tag for SGD warm-start.
+
+    Priority (highest first — first match wins):
+        is_holiday           → "event_holiday"
+        is_local_event       → "event_local"
+        is_promo             → "promo"
+        rain_mm > 3          → "rain_heavy"
+        rain_mm > 0          → "rain_light"
+        otherwise            → "normal"
+
+    Without this, warm-start tags every row "normal" and the other reason-tag
+    coefficients stay at zero (no variation → no signal for the regularizer to
+    keep non-zero). Switching scenarios in the dashboard then has no effect.
+    """
+    n = len(X)
+    tags = np.array(["normal"] * n, dtype=object)
+    rain = X.get("rain_mm", pd.Series([0.0] * n, index=X.index)).to_numpy()
+    is_holiday = X.get("is_holiday", pd.Series([0] * n, index=X.index)).to_numpy()
+    is_local = X.get("is_local_event", pd.Series([0] * n, index=X.index)).to_numpy()
+    is_promo = X.get("is_promo", pd.Series([0] * n, index=X.index)).to_numpy()
+    # Apply lowest priority first so higher-priority tags overwrite later.
+    tags[rain > 0] = "rain_light"
+    tags[rain > 3] = "rain_heavy"
+    tags[is_promo == 1] = "promo"
+    tags[is_local == 1] = "event_local"
+    tags[is_holiday == 1] = "event_holiday"
+    return tags.tolist()

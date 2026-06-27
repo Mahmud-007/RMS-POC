@@ -870,4 +870,72 @@ Reading:
 - Add a `DEPLOY.md` with click-by-click steps once the first deploy target is chosen and verified end-to-end.
 - If demo users start losing corrections frequently, move to Render with a free persistent disk (1 GB free, mounted at `/srv/artifacts`).
 
+### FEAT-016 — Warm-start SGD with derived reason tags (fix: scenarios now move predictions)
+
+- **Date:** 2026-06-26
+- **Author:** Day 3 follow-up
+- **Status:** Shipped
+- **Type:** Bugfix
+
+**Context.** User noticed on the Today / Tomorrow page that changing the `Scenario (what-if reason tag)` dropdown did not visibly change the forecast. Root-cause investigation via the Coefficient Inspector confirmed that every reason-tag coefficient was either exactly 0 or within rounding of 0 (the only non-zero values came from one ad-hoc correction submitted earlier).
+
+**Root cause.** `app/train/init_sgd.py` was warm-starting the SGD with **every** training row tagged as `reason_tag="normal"`. Two cascading problems:
+
+1. The `reason_normal` column was 1 for every row → constant feature → folds into the intercept → SGD has nothing to learn for it specifically.
+2. Every other `reason_*` column was 0 for every row → no variance → SGD's L2 regularizer keeps the coefficient at exactly 0.
+
+Result: only manager corrections could ever give a reason-tag coefficient any signal. Until the first correction with tag X arrived, the dropdown choice "X" had no effect.
+
+**Decision.**
+
+- New helper `app/features/feature_builder.derive_reason_tags(X)` — vectorized priority mapping from a row to its historical reason tag:
+  ```
+  is_holiday        → event_holiday
+  is_local_event    → event_local
+  is_promo          → promo
+  rain_mm > 3       → rain_heavy
+  rain_mm > 0       → rain_light
+  otherwise         → normal
+  ```
+- `init_sgd.init_for_channel` now calls `derive_reason_tags(X_base)` and passes the per-row list to `append_residual_features(...)` instead of the constant `"normal"`.
+- `init_for_channel` also returns `tag_distribution` and `reason_coefs` so post-warm-start state is observable from the trainer output.
+
+**Verification.** After re-running `python -m app.train.init_sgd`:
+
+| Channel | rain_heavy | rain_light | event_local | event_holiday | promo | normal |
+|---|---|---|---|---|---|---|
+| dine_in | +0.098 | +0.096 | −0.015 | −0.133 | −0.193 | +0.115 |
+| delivery | −0.028 | +0.030 | +0.053 | −0.011 | −0.161 | +0.086 |
+| takeaway | +0.019 | +0.021 | +0.005 | −0.029 | −0.028 | +0.012 |
+
+Tag distribution (same across channels — derived from features): `normal=4396, promo=420, event_local=192, rain_light=168, event_holiday=132, rain_heavy=104` of 5412 training rows.
+
+Forecast for dine_in 2026-06-27 19:00 across scenarios (base = 32.03):
+
+```
+normal           33.07    rain_heavy       33.49
+rain_light       33.33    event_holiday    31.92
+event_local      32.70    promo            32.06
+no_show_group    32.78    other            32.78
+```
+
+Range ≈ 1.6 covers — small but visibly moves the chart, matching what a manager would expect when changing scenarios. `no_show_group` and `other` remain at the "normal" baseline because they have no historical rows; they acquire meaning only through corrections (intentional).
+
+Pytest: **13 passed**.
+
+**Deviation from initial plan.** None. `PLANNING.md §7` specified the closed reason-tag vocabulary and the warm-start mechanic; this just makes the warm-start exercise all of it.
+
+**Alternatives considered.**
+- *Strip `BASE_FEATURES` from the SGD input* so reason tags would dominate the residual signal. Rejected — the SGD also benefits from those features for calibration; dropping them would limit what corrections can teach. Acceptable trade-off is "small but real" scenario shifts, not "dominant" ones.
+- *Force a sign prior on each tag.* Rejected — overrides what the data says.
+- *Always seed each tag with a synthetic mini-batch of biased rows.* Rejected — would inject information that didn't come from observed data.
+
+**Interpretation gotcha worth knowing.** Reason-tag coefficients capture the **residual** effect on top of what the other features already explain. The base model already learned the rain effect via `rain_mm`. So a small or even positive `reason_rain_heavy` coefficient on dine_in does **not** contradict "rain hurts dine-in" — it means *"after the base model handled rain via the continuous `rain_mm` feature, what extra bias remains on rows we labeled `rain_heavy`?"*. For tags with no other feature equivalent (`no_show_group`, `other`), the coefficient is pure manager signal.
+
+**Rollback plan.** Revert `app/features/feature_builder.py` and `app/train/init_sgd.py`; re-run `python -m app.train.init_sgd` to restore the all-`normal` warm-start.
+
+**Follow-ups.**
+- Add a dashboard caption near the scenario dropdown explaining "small shifts are expected; tags grow stronger as managers correct with them".
+- If users want larger scenario sensitivity, the next step is removing base features from the SGD's input surface (see Alternatives).
+
 <!-- Add new entries below this line. -->
