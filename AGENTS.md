@@ -142,8 +142,6 @@ promo, no_show_group, normal, other
 ```markdown
 ### FEAT-XXX — <Short title>
 
-- **Date:** YYYY-MM-DD
-- **Author:** <name or agent>
 - **Status:** Proposed | In progress | Shipped | Superseded by FEAT-YYY | Reverted
 - **Type:** Feature | Refactor | Model change | API change | Data change | Infra | Bugfix | Doc
 
@@ -166,8 +164,6 @@ promo, no_show_group, normal, other
 
 ### FEAT-000 — Project bootstrap
 
-- **Date:** 2026-06-25
-- **Author:** Initial planning session
 - **Status:** Shipped
 - **Type:** Doc
 
@@ -192,8 +188,6 @@ promo, no_show_group, normal, other
 
 ### FEAT-001 — Synthetic data generator
 
-- **Date:** 2026-06-25
-- **Author:** Day 1 implementation
 - **Status:** Shipped
 - **Type:** Data
 
@@ -254,8 +248,6 @@ Also seeded:
 
 ### FEAT-002 — Cap synthetic dataset at current date (2026-06-25)
 
-- **Date:** 2026-06-25
-- **Author:** Day 1 follow-up
 - **Status:** Shipped
 - **Type:** Data
 
@@ -292,8 +284,6 @@ Also seeded:
 
 ### FEAT-003 — Feature builder
 
-- **Date:** 2026-06-25
-- **Author:** Day 1 PM
 - **Status:** Shipped
 - **Type:** Feature
 
@@ -335,8 +325,6 @@ Interaction features (`rain_x_weekend`, `rain_x_dinner`) are off by default — 
 
 ### FEAT-004 — LightGBM base training per channel
 
-- **Date:** 2026-06-25
-- **Author:** Day 2 AM
 - **Status:** Shipped
 - **Type:** Model
 
@@ -382,8 +370,6 @@ MAPE ≈ 10% across all channels matches the 10% multiplicative noise injected b
 
 ### FEAT-005 — Dataset + validation visualization (dashboard pages 1 & 2)
 
-- **Date:** 2026-06-25
-- **Author:** Day 2 follow-up
 - **Status:** Shipped
 - **Type:** Feature
 
@@ -430,8 +416,6 @@ Dashboard launches cleanly (`streamlit run dashboard/streamlit_app.py`) and rend
 
 ### FEAT-006 — Data insights doc + static figure generator
 
-- **Date:** 2026-06-25
-- **Author:** Day 2 follow-up
 - **Status:** Shipped
 - **Type:** Doc
 
@@ -468,8 +452,6 @@ Charts produced:
 
 ### FEAT-007 — SGD residual layer
 
-- **Date:** 2026-06-26
-- **Author:** Day 2 PM
 - **Status:** Shipped
 - **Type:** Model
 
@@ -522,8 +504,6 @@ End-to-end correction round trip (`update → predict`) verified on the delivery
 
 ### FEAT-008 — Covers prediction service + API endpoint
 
-- **Date:** 2026-06-26
-- **Author:** Day 2 PM
 - **Status:** Shipped
 - **Type:** Feature
 
@@ -560,8 +540,6 @@ End-to-end correction round trip (`update → predict`) verified on the delivery
 
 ### FEAT-009 — Staff prediction service
 
-- **Date:** 2026-06-26
-- **Author:** Day 2 PM
 - **Status:** Shipped
 - **Type:** Feature
 
@@ -594,8 +572,6 @@ End-to-end correction round trip (`update → predict`) verified on the delivery
 
 ### FEAT-010 — Ingredient orders service
 
-- **Date:** 2026-06-26
-- **Author:** Day 2 PM
 - **Status:** Shipped
 - **Type:** Feature
 
@@ -640,8 +616,6 @@ The shelf-life clip is doing the right thing: tomato and beef demand exceeds the
 
 ### FEAT-011 — Corrections + metrics + training APIs fully wired
 
-- **Date:** 2026-06-26
-- **Author:** Day 2 PM
 - **Status:** Shipped
 - **Type:** API change
 
@@ -697,8 +671,6 @@ The shelf-life clip is doing the right thing: tomato and beef demand exceeds the
 
 ### FEAT-012 — Remaining dashboard pages live
 
-- **Date:** 2026-06-26
-- **Author:** Day 2 PM
 - **Status:** Shipped
 - **Type:** Feature
 
@@ -739,8 +711,6 @@ The dashboard calls service-level Python functions directly (not via HTTP) — P
 
 ### FEAT-013 — Backtest replay harness + convergence chart
 
-- **Date:** 2026-06-26
-- **Author:** Day 2 PM
 - **Status:** Shipped
 - **Type:** Feature
 
@@ -792,8 +762,6 @@ Reading:
 
 ### FEAT-014 — Smoke tests, requirements pin polish, README rewrite
 
-- **Date:** 2026-06-26
-- **Author:** Day 2 PM
 - **Status:** Shipped
 - **Type:** Test
 
@@ -832,8 +800,6 @@ Reading:
 
 ### FEAT-015 — Free-tier deployment readiness (Streamlit Cloud + HF Spaces)
 
-- **Date:** 2026-06-26
-- **Author:** Day 3 follow-up
 - **Status:** Shipped
 - **Type:** Infra
 
@@ -872,8 +838,6 @@ Reading:
 
 ### FEAT-016 — Warm-start SGD with derived reason tags (fix: scenarios now move predictions)
 
-- **Date:** 2026-06-26
-- **Author:** Day 3 follow-up
 - **Status:** Shipped
 - **Type:** Bugfix
 

@@ -15,7 +15,7 @@ A forecasting + feedback-loop system for a single restaurant. Predicts **hourly 
 3. [The problem](#3-the-problem)
 4. [Philosophy — why this approach](#4-philosophy--why-this-approach)
     - 4.1 [Alternative considered — LLM with tools](#41-alternative-considered--llm-with-tools)
-    - 4.2 [What we chose — hybrid ML model](#42-what-we-chose--hybrid-ml-model)
+    - 4.2 [What I chose — hybrid ML model](#42-what-we-chose--hybrid-ml-model)
     - 4.3 [Why LightGBM as the base model](#43-why-lightgbm-as-the-base-model)
     - 4.4 [Why SGDRegressor as the online correction layer](#44-why-sgdregressor-as-the-online-correction-layer)
     - 4.5 [Why not SARIMAX, Prophet, or TFT](#45-why-not-sarimax-prophet-or-tft)
@@ -71,7 +71,7 @@ The system predicts three things for any upcoming day:
 2. **Staffing** — headcount per role per hour, derived from covers via configurable throughput.
 3. **Ingredient orders** — quantities per ingredient over the supplier lead-time horizon, clipped by shelf life.
 
-Predictions will be wrong. The system accepts manager corrections (e.g. *"you predicted 120 covers; we actually got 85 because of rain"*) and uses them to adjust its coefficients online. Forecasts converge toward accuracy as more corrections arrive.
+Predictions will be wrong. The system accepts manager corrections (e.g. *"you predicted 120 covers; I actually got 85 because of rain"*) and uses them to adjust its coefficients online. Forecasts converge toward accuracy as more corrections arrive.
 
 This is **not** a one-shot model. It is a **feedback loop**.
 
@@ -115,11 +115,11 @@ Item 3 is the differentiator. Anyone can build a one-shot forecaster. The intere
 
 ## 4. Philosophy — why this approach
 
-Before writing any code we considered two fundamentally different solutions. The chosen one is justified below by elimination.
+Before writing any code I considered two fundamentally different solutions. The chosen one is justified below by elimination.
 
 ### 4.1 Alternative considered — LLM with tools
 
-The first solution we explored was an **agentic LLM** as the forecasting "brain", with three tools to gather context:
+The first solution I explored was an **agentic LLM** as the forecasting "brain", with three tools to gather context:
 
 - **Tool A — historical lookup.** Queries the database for past observations matching the target day-of-week. For Monday's forecast it pulls every Monday in the database.
 - **Tool B — local events lookup.** Returns local events, holidays, and other locality-specific information for the target date.
@@ -127,7 +127,7 @@ The first solution we explored was an **agentic LLM** as the forecasting "brain"
 
 After collecting the outputs of these three tools, the LLM would synthesize a numeric prediction for that day.
 
-**Why we did not proceed with this:**
+**Why I did not proceed with this:**
 
 LLMs are not good at numerical reasoning on their own. Asked to weight several signals and produce a single calibrated number, they make common arithmetic mistakes, anchor on the most recent input, and have no internal mechanism for **calibration to past errors**. They also cannot represent "the rain coefficient is `−0.06` for dine-in but `+0.03` for delivery" with any stability — every call is a fresh inference with no learned state.
 
@@ -135,7 +135,7 @@ A second, related issue: there is no clean way for an LLM to **learn online** fr
 
 For a time-series forecasting problem where calibration and online adaptation are the whole game, the LLM-with-tools architecture is the wrong tool. It is excellent at unstructured reasoning; it is poor at numeric calibration with a feedback loop.
 
-### 4.2 What we chose — hybrid ML model
+### 4.2 What I chose — hybrid ML model
 
 This problem is **time-series forecasting** with hourly granularity, per-channel splits, calendar cycles, weather sensitivity, and the requirement to absorb manager corrections in real time.
 
@@ -157,7 +157,7 @@ LightGBM has **no true online learning**. Its `init_model` parameter supports ad
 
 `SGDRegressor` from scikit-learn supports **`partial_fit(x, y)`**: pass one row, take one gradient step, done. Milliseconds. This is the actual capability the correction loop needs.
 
-The trade-off: SGD is linear. To capture non-linear residuals we would need a more powerful online learner. But because the base model already covers the non-linear structure, the residual layer's job is *calibration plus reason-tag handling*, both of which are well-served by a linear model.
+The trade-off: SGD is linear. To capture non-linear residuals I would need a more powerful online learner. But because the base model already covers the non-linear structure, the residual layer's job is *calibration plus reason-tag handling*, both of which are well-served by a linear model.
 
 The role split is therefore:
 
@@ -172,7 +172,7 @@ When the manager gives feedback, the system reacts **immediately** — the next 
 
 For a production-grade demand forecasting system on this domain, **SARIMAX** (seasonal ARIMA with exogenous regressors), **Prophet**, or **TFT** (Temporal Fusion Transformer) would all be defensible — and in some respects superior — choices.
 
-We chose not to use them for this POC because:
+I chose not to use them for this POC because:
 
 - The point of this POC is to **demonstrate the feedback-loop architecture**, not to benchmark forecast accuracy.
 - SARIMAX is harder to configure per channel (each channel needs its own (p,d,q)(P,D,Q,s)).
@@ -219,7 +219,7 @@ Customers do not disappear when it rains, they **change channel**:
 - **Delivery** rises mildly under light/moderate rain.
 - **Takeaway** is essentially flat.
 
-The dine-in loss is larger than the delivery gain, so total covers contract under rain — not all displaced dine-in customers convert to delivery. This is also why we train **one model per channel**: a single model with a global rain coefficient would average these effects out and predict badly for both.
+The dine-in loss is larger than the delivery gain, so total covers contract under rain — not all displaced dine-in customers convert to delivery. This is also why I train **one model per channel**: a single model with a global rain coefficient would average these effects out and predict badly for both.
 
 ### 5.5 One-paragraph summary
 
@@ -744,7 +744,7 @@ Limits: 750 hours/month free, 15-minute sleep after inactivity, ~60-second cold 
 
 This is a POC. The following are known limitations that would need to be addressed before a production deployment.
 
-- **Synthetic data.** Real demand has heavier-tailed noise (no-shows, group bookings, viral moments). The 10% multiplicative Gaussian floor we trained against is optimistic.
+- **Synthetic data.** Real demand has heavier-tailed noise (no-shows, group bookings, viral moments). The 10% multiplicative Gaussian floor I trained against is optimistic.
 - **Single restaurant.** Multi-tenant support is not implemented. Adding it would require a `restaurant_id` everywhere plus row-level access control.
 - **No authentication.** Anyone can submit corrections and trigger retrains. Acceptable for a demo; not acceptable for production.
 - **Point forecasts only.** No confidence intervals. Quantile regression or conformal prediction would close this gap.
