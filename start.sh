@@ -1,22 +1,27 @@
 #!/usr/bin/env bash
 # Render backend start script.
 #
-# Idempotent bootstrap: if the artifacts directory has no database yet (first
-# boot, or an ephemeral free-tier cold start), generate the dataset and train
-# the models. With a persistent disk mounted at artifacts/, this runs exactly
-# once and the trained state — including accumulated corrections — survives
-# restarts. Without a disk (free tier), it re-runs on every cold start and the
-# learning from corrections resets to the warm-start baseline.
+# CRITICAL: bind the HTTP port immediately so Render's health check (which scans
+# for an open port within ~90s) passes. If the dataset/models are missing, run
+# the bootstrap (generate data + train) in the BACKGROUND — it must NOT block
+# the port from opening. /health responds right away; forecast endpoints return
+# an error until training finishes (~1-2 min on a fresh boot), then work normally.
+#
+# With a persistent disk, this bootstrap runs once and the trained state
+# (including accumulated corrections) survives restarts. Without a disk (free
+# tier) it re-runs on each cold start.
 set -e
 
 if [ ! -f artifacts/rms.db ]; then
-  echo "[start] no artifacts/rms.db — bootstrapping dataset + models"
-  python -m app.data.generator
-  python -m app.train.train_base
-  python -m app.train.init_sgd
-  echo "[start] bootstrap complete"
+  echo "[start] artifacts missing — bootstrapping in the background"
+  (
+    python -m app.data.generator \
+      && python -m app.train.train_base \
+      && python -m app.train.init_sgd \
+      && echo "[start] bootstrap complete"
+  ) &
 else
-  echo "[start] existing artifacts/rms.db found — skipping bootstrap"
+  echo "[start] artifacts present — skipping bootstrap"
 fi
 
 exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --workers 1

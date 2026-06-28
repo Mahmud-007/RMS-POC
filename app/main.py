@@ -3,8 +3,9 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api import corrections, forecast, metrics, training
 from app.scheduler import start_scheduler, stop_scheduler
@@ -47,6 +48,24 @@ app.include_router(forecast.router, prefix="/forecast", tags=["forecast"])
 app.include_router(corrections.router, prefix="/corrections", tags=["corrections"])
 app.include_router(training.router, prefix="/train", tags=["training"])
 app.include_router(metrics.router, prefix="/metrics", tags=["metrics"])
+
+
+@app.exception_handler(RuntimeError)
+async def _runtime_error_handler(request: Request, exc: RuntimeError) -> JSONResponse:
+    """Surface the model-warmup window cleanly.
+
+    On a fresh boot the models train in the background (see start.sh). Until they
+    exist, the prediction services raise RuntimeError ("No base model registered…").
+    Return 503 with a friendly message so the frontend shows "warming up" rather
+    than a raw 500.
+    """
+    msg = str(exc)
+    if any(s in msg for s in ("No base model", "No SGD", "not initialized", "not fitted")):
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Models are still warming up — try again in a minute."},
+        )
+    return JSONResponse(status_code=500, content={"detail": msg})
 
 
 @app.get("/health")
