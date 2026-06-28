@@ -5,6 +5,7 @@ import { tomorrowISO, prettyDate, n0, n1 } from "../lib/format";
 import { Card, ErrorBox, SectionTitle, Spinner, Badge } from "../components/ui";
 import WeatherCard from "../components/WeatherCard";
 import CoversChart from "../components/CoversChart";
+import ChannelTotalsChart from "../components/ChannelTotalsChart";
 import { CHANNELS, CHANNEL_LABELS, REASON_TAGS } from "../lib/types";
 import type { ReasonTag } from "../lib/types";
 
@@ -110,13 +111,20 @@ export default function Forecast() {
             ))}
           </div>
 
-          <div className="grid md:grid-cols-3 gap-3 mb-6">
-            <div className="md:col-span-1">
-              <WeatherCard weather={day.data.weather} />
-            </div>
-            <Card className="md:col-span-2 p-4">
+          {/* Weather — compact, one-third width */}
+          <div className="grid md:grid-cols-3 gap-3 mb-3">
+            <WeatherCard weather={day.data.weather} />
+          </div>
+
+          {/* Two charts side by side: hourly profile + whole-day channel totals */}
+          <div className="grid lg:grid-cols-2 gap-3 mb-6">
+            <Card className="p-4">
               <SectionTitle>Hourly customer forecast</SectionTitle>
               <CoversChart forecast={day.data} />
+            </Card>
+            <Card className="p-4">
+              <SectionTitle>Whole day by channel</SectionTitle>
+              <ChannelTotalsChart forecast={day.data} />
             </Card>
           </div>
 
