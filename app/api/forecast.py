@@ -53,23 +53,29 @@ def get_weather(target: date = Query(..., description="Date to fetch forecast we
 @router.get("/day")
 def get_day_forecast(
     target: date = Query(..., description="Date to forecast"),
-    reason_tag: str = Query("normal", description="What-if scenario override"),
-    use_weather: bool = Query(True),
+    use_weather: bool = Query(True, description="Use the live forecast as the weather baseline"),
+    rain_mm: float | None = Query(None, description="Override rain (mm) for all hours"),
+    temp: float | None = Query(None, description="Override temperature (°C) for all hours"),
+    is_holiday: bool | None = Query(None, description="Mark the day as a public holiday"),
+    is_promo: bool | None = Query(None, description="Mark a promo as running"),
+    is_local_event: bool | None = Query(None, description="Mark a local event"),
+    event_severity: float | None = Query(None, description="Local-event severity 0..1"),
 ) -> dict:
     """Aggregated payload for the manager dashboard: covers + staff + weather in one call.
 
-    Returns:
-        {
-          date, reason_tag, weather,
-          covers: {channel: [hourly...]},
-          totals: {channel: float, all: float},
-          staff:  {hourly, person_hours, peak_headcount},
-        }
+    Weather defaults to the live Open-Meteo forecast. Any explicit override
+    (rain_mm / temp / event flags) is the manager correcting or stress-testing that
+    baseline — only supplied fields are changed, and the value is used as given.
+
+    Returns: { date, weather, overrides_applied, covers, totals, staff }.
     """
-    covers = covers_svc.predict_day(
-        target=target, reason_tag=reason_tag, use_weather=use_weather,
+    overrides = dict(
+        rain_mm=rain_mm, temp=temp,
+        is_holiday=is_holiday, is_promo=is_promo,
+        is_local_event=is_local_event, event_severity=event_severity,
     )
-    staff = staff_svc.predict_day(target)
+    covers = covers_svc.predict_day(target=target, use_weather=use_weather, **overrides)
+    staff = staff_svc.predict_day(target, use_weather=use_weather, **overrides)
 
     totals = {ch: sum(r["final_pred"] for r in rows) for ch, rows in covers.items()}
     totals["all"] = sum(totals.values())
@@ -81,10 +87,12 @@ def get_day_forecast(
     except Exception:
         weather = None
 
+    applied = {k: v for k, v in overrides.items() if v is not None}
+
     return {
         "date": target.isoformat(),
-        "reason_tag": reason_tag,
         "weather": weather,
+        "overrides_applied": applied,
         "covers": covers,
         "totals": totals,
         "staff": staff,

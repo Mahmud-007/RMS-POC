@@ -28,6 +28,17 @@ export const REASON_TAGS = [
 ] as const;
 export type ReasonTag = (typeof REASON_TAGS)[number];
 
+export const REASON_LABELS: Record<ReasonTag, string> = {
+  normal: "Normal day",
+  rain_light: "Light rain",
+  rain_heavy: "Heavy rain",
+  event_holiday: "Public holiday",
+  event_local: "Local event",
+  promo: "Promotion running",
+  no_show_group: "No-show / cancelled group",
+  other: "Other reason",
+};
+
 export interface HourCover {
   ts: string;
   hour: number;
@@ -62,10 +73,19 @@ export interface StaffPlan {
   peak_headcount: Record<string, number>;
 }
 
+export interface ForecastOverrides {
+  use_weather?: boolean;
+  rain_mm?: number | null;
+  temp?: number | null;
+  is_holiday?: boolean | null;
+  is_promo?: boolean | null;
+  is_local_event?: boolean | null;
+}
+
 export interface DayForecast {
   date: string;
-  reason_tag: string;
   weather: WeatherSummary | null;
+  overrides_applied: Record<string, number | boolean>;
   covers: Record<Channel, HourCover[]>;
   totals: Record<Channel, number> & { all: number };
   staff: StaffPlan;

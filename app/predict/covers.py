@@ -13,6 +13,7 @@ from app.features.feature_builder import (
     CONDITION_CODES,
     append_residual_features,
     build_inference_window,
+    derive_reason_tags,
     residual_feature_names,
 )
 
@@ -45,6 +46,68 @@ def _apply_scenario(X_base, reason_tag: str):
     return X_over
 
 
+def _condition_code_for(temp: float, rain: float) -> int:
+    """Mirror the generator/Open-Meteo condition mapping so overridden weather is
+    schema-consistent with what the model trained on."""
+    if rain > 0 and temp < 2:
+        return CONDITION_CODES["snow"]
+    if rain > 4:
+        return CONDITION_CODES["rain_heavy"]
+    if rain > 0:
+        return CONDITION_CODES["rain_light"]
+    if temp > 28:
+        return CONDITION_CODES["hot"]
+    if temp < 5:
+        return CONDITION_CODES["cold"]
+    return CONDITION_CODES["clear"]
+
+
+def _apply_overrides(
+    X_base,
+    *,
+    rain_mm: float | None = None,
+    temp: float | None = None,
+    is_holiday: bool | None = None,
+    is_promo: bool | None = None,
+    is_local_event: bool | None = None,
+    event_severity: float | None = None,
+):
+    """Apply explicit manager overrides to the base feature row.
+
+    Each field is only touched when the caller provides a value (not None), so the
+    manager edits exactly what they disagree with and the live forecast stands for
+    everything else. When rain/temp is overridden, condition_code is recomputed to
+    stay consistent. Unlike the legacy scenario buckets, the value supplied IS the
+    value used — no hidden magnitude substitution.
+    """
+    has_weather = rain_mm is not None or temp is not None
+    has_event = any(
+        v is not None for v in (is_holiday, is_promo, is_local_event, event_severity)
+    )
+    if not (has_weather or has_event):
+        return X_base, False
+
+    X = X_base.copy()
+    if rain_mm is not None and "rain_mm" in X.columns:
+        X["rain_mm"] = float(rain_mm)
+    if temp is not None and "temp" in X.columns:
+        X["temp"] = float(temp)
+    if has_weather and "condition_code" in X.columns:
+        X["condition_code"] = [
+            _condition_code_for(float(t), float(r))
+            for t, r in zip(X["temp"], X["rain_mm"])
+        ]
+    if is_holiday is not None and "is_holiday" in X.columns:
+        X["is_holiday"] = int(bool(is_holiday))
+    if is_promo is not None and "is_promo" in X.columns:
+        X["is_promo"] = int(bool(is_promo))
+    if is_local_event is not None and "is_local_event" in X.columns:
+        X["is_local_event"] = int(bool(is_local_event))
+    if event_severity is not None and "event_severity" in X.columns:
+        X["event_severity"] = float(event_severity)
+    return X, True
+
+
 def _apply_weather(X_base, frame, hourly_weather: dict[int, dict] | None):
     """Populate the base feature row with fetched hourly weather (per service hour).
 
@@ -69,18 +132,28 @@ def predict_day(
     channel: str | None = None,
     reason_tag: str = "normal",
     use_weather: bool = True,
+    *,
+    rain_mm: float | None = None,
+    temp: float | None = None,
+    is_holiday: bool | None = None,
+    is_promo: bool | None = None,
+    is_local_event: bool | None = None,
+    event_severity: float | None = None,
     db_path: Path = DB_PATH,
 ) -> dict[str, list[dict]]:
     """Hourly forecast for `target`. Returns {channel: [{ts, hour, base, residual, final}]}.
 
-    Weather handling, in order of precedence:
-      1. If `use_weather` and an Open-Meteo forecast exists for the date, the base
-         feature row is populated with the real hourly forecast.
-      2. If `reason_tag` is a weather/event scenario, its override is applied on top
-         (the manager's explicit what-if always wins over the fetched forecast).
+    Feature construction, in order (each later layer overrides the earlier):
+      1. `use_weather`: populate the row with the live Open-Meteo hourly forecast.
+      2. `reason_tag` scenario buckets (legacy what-if; used by the Streamlit admin).
+      3. Explicit manager overrides (`rain_mm`, `temp`, event flags) — the React UI
+         path. Only fields the manager actually supplies are touched; everything else
+         keeps the live forecast. The supplied value is used verbatim (no bucket
+         magnitude substitution).
 
-    `reason_tag` defaults to `normal` (no override). Passing `rain_heavy` etc. lets a
-    manager explore a hypothetical regardless of the actual forecast.
+    When explicit overrides are supplied, the SGD reason tag is *derived* per-row from
+    the resulting features (so the residual layer applies the matching learned effect).
+    Otherwise the caller's `reason_tag` drives the SGD one-hot.
     """
     channels = (channel,) if channel else CHANNELS
     out: dict[str, list[dict]] = {}
@@ -101,11 +174,19 @@ def predict_day(
         frame = build_inference_window(timestamps, ch, db_path, include_interactions=False)
         X_base = _apply_weather(frame[BASE_FEATURES], frame, hourly_weather)
         X_base = _apply_scenario(X_base, reason_tag)
+        X_base, has_overrides = _apply_overrides(
+            X_base,
+            rain_mm=rain_mm, temp=temp,
+            is_holiday=is_holiday, is_promo=is_promo,
+            is_local_event=is_local_event, event_severity=event_severity,
+        )
         base_pred = np.asarray(base.predict(X_base), dtype=float)
 
-        # SGD residual sees the same overridden base row (so interactions like
-        # rain_x_dinner use the scenario's rain_mm, not the placeholder 0).
-        X_sgd = append_residual_features(X_base, base_pred=base_pred, reason_tag=reason_tag)
+        # SGD residual sees the same row. When the manager supplied explicit overrides,
+        # derive the reason tag from the resulting features so the residual matches;
+        # otherwise honour the caller's reason_tag.
+        sgd_reason = derive_reason_tags(X_base) if has_overrides else reason_tag
+        X_sgd = append_residual_features(X_base, base_pred=base_pred, reason_tag=sgd_reason)
         X_sgd = X_sgd[feature_cols]
 
         if sgd is not None and sgd.fitted:

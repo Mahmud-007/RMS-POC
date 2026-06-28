@@ -30,9 +30,13 @@ def _load_throughput(db_path: Path) -> dict[str, dict]:
     return {r[0]: {"cph": float(r[1]), "floor": int(r[2])} for r in rows}
 
 
-def predict_day(target: date, db_path: Path = DB_PATH) -> dict:
-    """Per-hour headcount per role + daily totals."""
-    forecast = covers_svc.predict_day(target, db_path=db_path)
+def predict_day(target: date, db_path: Path = DB_PATH, **cover_overrides) -> dict:
+    """Per-hour headcount per role + daily totals.
+
+    `cover_overrides` (rain_mm, temp, is_holiday, ...) are forwarded to the cover
+    forecast so staffing reflects the same weather/event assumptions the manager set.
+    """
+    forecast = covers_svc.predict_day(target, db_path=db_path, **cover_overrides)
     throughput = _load_throughput(db_path)
 
     # Index covers by (hour, channel) for quick lookup

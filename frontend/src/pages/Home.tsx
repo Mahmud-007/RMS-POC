@@ -10,8 +10,8 @@ export default function Home() {
   const date = tomorrowISO();
 
   const day = useQuery({
-    queryKey: ["day", date, "normal"],
-    queryFn: () => api.dayForecast(date, "normal", true),
+    queryKey: ["day", date],
+    queryFn: () => api.dayForecast(date),
   });
 
   const accuracy = useQuery({

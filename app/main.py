@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
 
 
-app = FastAPI(title="RMS Forecasting", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="RRPS Forecasting", version="0.1.0", lifespan=lifespan)
 
 # CORS — allow the React frontend (local dev + deployed origins).
 # Configure deployed origins via RMS_CORS_ORIGINS (comma-separated). Local Vite
@@ -31,6 +31,8 @@ _extra_origins = [o.strip() for o in os.getenv("RMS_CORS_ORIGINS", "").split(","
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_default_origins + _extra_origins,
+    # Any localhost port in dev (Vite drifts to 5174/5175 when 5173 is busy).
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

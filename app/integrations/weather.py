@@ -23,10 +23,9 @@ import httpx
 
 from app.features.feature_builder import CONDITION_CODES
 
-# Default location — override per call or via env. Placeholder: London.
-DEFAULT_LAT = float(os.getenv("RMS_LAT", "51.5074"))
-DEFAULT_LON = float(os.getenv("RMS_LON", "-0.1278"))
-DEFAULT_TZ = os.getenv("RMS_TZ", "auto")
+DEFAULT_LAT = float(os.getenv("RMS_LAT", "23.9999"))
+DEFAULT_LON = float(os.getenv("RMS_LON", "90.4203"))
+DEFAULT_TZ = os.getenv("RMS_TZ", "Asia/Dhaka")
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 SERVICE_HOURS = list(range(11, 23))

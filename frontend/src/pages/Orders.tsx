@@ -17,9 +17,10 @@ export default function Orders() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Order sheet</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Supplies to Order</h1>
         <p className="text-slate-500 text-sm mt-1">
-          Recommended ingredient orders for {prettyDate(start)} – {prettyDate(end)}.
+          Ingredients to buy for {prettyDate(start)} – {prettyDate(end)}, based on the
+          forecast, what's in stock, and each item's shelf life.
         </p>
       </div>
 

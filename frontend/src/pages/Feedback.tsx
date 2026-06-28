@@ -1,9 +1,14 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import { todayISO } from "../lib/format";
+import { todayISO, n1 } from "../lib/format";
 import { Card, ErrorBox, SectionTitle } from "../components/ui";
-import { CHANNELS, CHANNEL_LABELS, REASON_TAGS } from "../lib/types";
+import {
+  CHANNELS,
+  CHANNEL_LABELS,
+  REASON_LABELS,
+  REASON_TAGS,
+} from "../lib/types";
 import type { Channel, CorrectionResult, ReasonTag } from "../lib/types";
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 11); // 11..22
@@ -16,6 +21,20 @@ export default function Feedback() {
   const [actual, setActual] = useState<number>(10);
   const [reason, setReason] = useState<ReasonTag>("normal");
   const [result, setResult] = useState<CorrectionResult | null>(null);
+
+  // Pull that day's forecast so the manager can see what we predicted while
+  // they enter what actually happened.
+  const day = useQuery({
+    queryKey: ["day", date],
+    queryFn: () => api.dayForecast(date),
+  });
+
+  const predicted = (() => {
+    const rows = day.data?.covers?.[channel];
+    if (!rows) return null;
+    const match = rows.find((r) => r.hour === hour);
+    return match ? match.final_pred : null;
+  })();
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -35,9 +54,10 @@ export default function Feedback() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Feedback</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Report Results</h1>
         <p className="text-slate-500 text-sm mt-1">
-          Tell the system what actually happened. It learns from every correction.
+          Enter how many customers actually came, so the system compares it to the
+          forecast and gets more accurate over time.
         </p>
       </div>
 
@@ -102,11 +122,36 @@ export default function Feedback() {
             >
               {REASON_TAGS.map((t) => (
                 <option key={t} value={t}>
-                  {t}
+                  {REASON_LABELS[t]}
                 </option>
               ))}
             </select>
           </label>
+        </div>
+
+        {/* What the model predicted for this slot */}
+        <div className="mt-4 flex items-center gap-3 rounded-lg bg-slate-50 border border-slate-200 px-4 py-3">
+          <span className="text-sm text-slate-500">We predicted</span>
+          <span className="text-xl font-bold text-slate-900">
+            {day.isLoading
+              ? "…"
+              : predicted != null
+                ? `${n1(predicted)} customers`
+                : "—"}
+          </span>
+          <span className="text-xs text-slate-400">
+            {CHANNEL_LABELS[channel]} · {hour}:00 · {date}
+          </span>
+          {predicted != null && actual > 0 && (
+            <span
+              className={`ml-auto text-sm font-medium ${
+                actual - predicted >= 0 ? "text-green-600" : "text-red-600"
+              }`}
+            >
+              {actual - predicted >= 0 ? "+" : ""}
+              {n1(actual - predicted)} vs actual
+            </span>
+          )}
         </div>
 
         <button

@@ -3,6 +3,7 @@ import type {
   ChannelMetrics,
   CorrectionResult,
   DayForecast,
+  ForecastOverrides,
   OrderLine,
   ReasonTag,
   WeatherSummary,
@@ -37,10 +38,17 @@ export const api = {
 
   health: () => getJSON<{ status: string }>("/health"),
 
-  dayForecast: (date: string, reasonTag: ReasonTag = "normal", useWeather = true) =>
-    getJSON<DayForecast>(
-      `/forecast/day?target=${date}&reason_tag=${reasonTag}&use_weather=${useWeather}`,
-    ),
+  dayForecast: (date: string, overrides: ForecastOverrides = {}) => {
+    const p = new URLSearchParams({ target: date });
+    p.set("use_weather", String(overrides.use_weather ?? true));
+    if (overrides.rain_mm != null) p.set("rain_mm", String(overrides.rain_mm));
+    if (overrides.temp != null) p.set("temp", String(overrides.temp));
+    if (overrides.is_holiday != null) p.set("is_holiday", String(overrides.is_holiday));
+    if (overrides.is_promo != null) p.set("is_promo", String(overrides.is_promo));
+    if (overrides.is_local_event != null)
+      p.set("is_local_event", String(overrides.is_local_event));
+    return getJSON<DayForecast>(`/forecast/day?${p.toString()}`);
+  },
 
   weather: (date: string) =>
     getJSON<{ available: boolean } & Partial<WeatherSummary>>(
