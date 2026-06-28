@@ -902,4 +902,44 @@ Pytest: **13 passed**.
 - Add a dashboard caption near the scenario dropdown explaining "small shifts are expected; tags grow stronger as managers correct with them".
 - If users want larger scenario sensitivity, the next step is removing base features from the SGD's input surface (see Alternatives).
 
+### FEAT-017 — Scenario dropdown overrides base weather/event features
+
+- **Status:** Shipped
+- **Type:** Bugfix
+
+**Context.** On the Today / Tomorrow page, switching the scenario dropdown produced a numerically real but visually imperceptible change (~0.5–2 covers on a base of ~30). A manager could not judge the effect of, say, heavy rain. Root cause: the dropdown flipped only the SGD residual's `reason_*` one-hot. The LightGBM base predicted with the future-date placeholder weather (`rain_mm=0, condition=clear`) regardless of scenario, so the dominant ~90% of the prediction signal never moved.
+
+**Decision.** Add `SCENARIO_OVERRIDES` to `app/predict/covers.py`: when a scenario is selected, override the base feature row before prediction so LightGBM applies its learned coefficients.
+
+```
+rain_heavy    → rain_mm=6.0, condition_code=rain_heavy
+rain_light    → rain_mm=1.5, condition_code=rain_light
+event_holiday → is_holiday=1
+event_local   → is_local_event=1, event_severity=0.8
+promo         → is_promo=1
+normal / no_show_group / other → residual-only, no override
+```
+
+The overridden row also feeds the SGD layer, so derived interactions (`rain_x_dinner`) use the scenario's rain value rather than the placeholder.
+
+**Verification.** Saturday 2026-06-27 daily totals across scenarios:
+
+| Scenario | dine_in | delivery | takeaway | total |
+|---|---|---|---|---|
+| normal | 220 | 193 | 61 | 474 |
+| rain_light | 200 | 201 | 61 | 462 |
+| rain_heavy | 150 (−32%) | 214 (+11%) | 56 (−8%) | 420 |
+| event_holiday | 307 (+40%) | 266 (+38%) | 82 (+34%) | 655 |
+| promo | 252 (+15%) | 221 (+15%) | 73 (+20%) | 546 |
+
+Shifts now match the ground-truth generator multipliers and are visible on the stacked-bar chart. All 13 smoke tests pass.
+
+**Deviation from initial plan.** None — `PLANNING.md §6.1` always intended weather to drive the forecast; this fixes inference-time feature construction for future dates.
+
+**Alternatives considered.** Raising the SGD clip cap to give the residual more authority — rejected because it doesn't solve cold-start (reason coefficients are small until many corrections arrive) and weakens the residual's noise-rejection.
+
+**Rollback plan.** Revert `app/predict/covers.py`.
+
+**Follow-ups.** Open-Meteo integration (FEAT-018) replaces the static override magnitudes with real forecast weather; the scenario dropdown then becomes a what-if override on top of fetched conditions.
+
 <!-- Add new entries below this line. -->
