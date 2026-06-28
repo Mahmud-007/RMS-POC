@@ -1,4 +1,5 @@
 import type {
+  AccuracyResponse,
   ChannelMetrics,
   CorrectionResult,
   DayForecast,
@@ -51,6 +52,9 @@ export const api = {
 
   metrics: (rollingDays = 30) =>
     getJSON<Record<string, ChannelMetrics>>(`/metrics?rolling_days=${rollingDays}`),
+
+  accuracy: (nDays = 28) =>
+    getJSON<AccuracyResponse>(`/metrics/accuracy?n_days=${nDays}`),
 
   submitCorrection: (body: {
     ts: string;

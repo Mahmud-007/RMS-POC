@@ -98,6 +98,22 @@ export interface CorrectionResult {
   model_version: string;
 }
 
+export interface AccuracyChannel {
+  mae: number;
+  mape: number;
+  bias: number;
+  r2: number;
+  n: number;
+  accuracy: number;
+}
+
+export interface AccuracyResponse {
+  n_days: number;
+  overall_accuracy: number;
+  overall_mape: number;
+  channels: Record<string, AccuracyChannel>;
+}
+
 export interface ChannelMetrics {
   rolling: {
     n: number;

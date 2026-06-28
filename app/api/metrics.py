@@ -70,6 +70,39 @@ def get_metrics(rolling_days: int = Query(DEFAULT_ROLLING_DAYS, ge=1, le=365)) -
     return out
 
 
+@router.get("/accuracy")
+def get_accuracy(n_days: int = Query(VALIDATION_DAYS, ge=7, le=120)) -> dict:
+    """Real, measured accuracy from the holdout window.
+
+    Unlike /metrics (which needs a populated predictions table), this runs the
+    current base models on the last `n_days` of *known actuals* and reports the
+    measured error. accuracy = 1 - MAPE.
+    """
+    from app.eval.holdout import predict_holdout_all_channels, summary_metrics
+
+    df = predict_holdout_all_channels(n_days=n_days)
+    summary = summary_metrics(df)  # indexed by channel: MAE, MAPE, Bias, R2, n
+
+    channels: dict[str, dict] = {}
+    for ch, row in summary.iterrows():
+        mape = float(row["MAPE"])
+        channels[str(ch)] = {
+            "mae": float(row["MAE"]),
+            "mape": mape,
+            "bias": float(row["Bias"]),
+            "r2": float(row["R2"]),
+            "n": int(row["n"]),
+            "accuracy": max(0.0, 1.0 - mape),
+        }
+    overall_mape = float(summary["MAPE"].mean())
+    return {
+        "n_days": n_days,
+        "overall_accuracy": max(0.0, 1.0 - overall_mape),
+        "overall_mape": overall_mape,
+        "channels": channels,
+    }
+
+
 @router.get("/registry")
 def get_model_registry() -> list[dict]:
     with sqlite3.connect(DB_PATH) as conn:

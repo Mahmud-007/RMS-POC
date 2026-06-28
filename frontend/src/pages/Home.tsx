@@ -14,9 +14,9 @@ export default function Home() {
     queryFn: () => api.dayForecast(date, "normal", true),
   });
 
-  const metrics = useQuery({
-    queryKey: ["metrics", 7],
-    queryFn: () => api.metrics(7),
+  const accuracy = useQuery({
+    queryKey: ["accuracy", 28],
+    queryFn: () => api.accuracy(28),
   });
 
   const orders = useQuery({
@@ -60,14 +60,13 @@ export default function Home() {
             <MetricCard
               label="Forecast accuracy"
               value={
-                metrics.data
-                  ? pct(
-                      1 -
-                        (metrics.data["dine_in"]?.rolling.mape ?? 0),
-                    )
-                  : "—"
+                accuracy.data ? pct(accuracy.data.overall_accuracy) : "—"
               }
-              sub="dine-in, last 7 days"
+              sub={
+                accuracy.data
+                  ? `measured on last ${accuracy.data.n_days} days`
+                  : "measuring…"
+              }
               accent="slate"
             />
           </div>
