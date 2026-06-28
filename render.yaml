@@ -23,7 +23,14 @@ services:
     runtime: python
     plan: free
     # plan: starter           # <- for persistence: switch to starter and add the disk below
-    buildCommand: pip install -r requirements.txt
+    # Train during BUILD so the port binds instantly at start (Render's health
+    # check times out if training blocks startup). Build-time artifacts are baked
+    # into the deploy and restored on cold start.
+    buildCommand: >-
+      pip install -r requirements.txt &&
+      python -m app.data.generator &&
+      python -m app.train.train_base &&
+      python -m app.train.init_sgd
     startCommand: bash start.sh
     healthCheckPath: /health
     envVars:
