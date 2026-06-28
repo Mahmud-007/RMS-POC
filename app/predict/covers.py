@@ -45,27 +45,62 @@ def _apply_scenario(X_base, reason_tag: str):
     return X_over
 
 
+def _apply_weather(X_base, frame, hourly_weather: dict[int, dict] | None):
+    """Populate the base feature row with fetched hourly weather (per service hour).
+
+    `frame` carries the `ts` column so we can align each row to its hour.
+    """
+    if not hourly_weather:
+        return X_base
+    X_w = X_base.copy()
+    hours = [ts.hour for ts in frame["ts"]]
+    for col in ("rain_mm", "temp", "condition_code"):
+        if col not in X_w.columns:
+            continue
+        X_w[col] = [
+            hourly_weather.get(h, {}).get(col, X_w.iloc[i][col])
+            for i, h in enumerate(hours)
+        ]
+    return X_w
+
+
 def predict_day(
     target: date,
     channel: str | None = None,
     reason_tag: str = "normal",
+    use_weather: bool = True,
     db_path: Path = DB_PATH,
 ) -> dict[str, list[dict]]:
     """Hourly forecast for `target`. Returns {channel: [{ts, hour, base, residual, final}]}.
 
-    `reason_tag` lets callers explore conditional forecasts (e.g. what does the model
-    predict if we tell it tomorrow will be `rain_heavy`?). Defaults to `normal`.
+    Weather handling, in order of precedence:
+      1. If `use_weather` and an Open-Meteo forecast exists for the date, the base
+         feature row is populated with the real hourly forecast.
+      2. If `reason_tag` is a weather/event scenario, its override is applied on top
+         (the manager's explicit what-if always wins over the fetched forecast).
+
+    `reason_tag` defaults to `normal` (no override). Passing `rain_heavy` etc. lets a
+    manager explore a hypothetical regardless of the actual forecast.
     """
     channels = (channel,) if channel else CHANNELS
     out: dict[str, list[dict]] = {}
     timestamps = [datetime.combine(target, time(h)) for h in SERVICE_HOURS]
     feature_cols = residual_feature_names(include_interactions=True)
 
+    hourly_weather = None
+    if use_weather:
+        try:
+            from app.integrations.weather import get_hourly_weather
+            hourly_weather = get_hourly_weather(target)
+        except Exception:
+            hourly_weather = None
+
     for ch in channels:
         base = load_latest_base(ch, db_path)
         sgd = load_latest_sgd(ch, db_path)
         frame = build_inference_window(timestamps, ch, db_path, include_interactions=False)
-        X_base = _apply_scenario(frame[BASE_FEATURES], reason_tag)
+        X_base = _apply_weather(frame[BASE_FEATURES], frame, hourly_weather)
+        X_base = _apply_scenario(X_base, reason_tag)
         base_pred = np.asarray(base.predict(X_base), dtype=float)
 
         # SGD residual sees the same overridden base row (so interactions like

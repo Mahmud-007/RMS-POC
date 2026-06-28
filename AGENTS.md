@@ -942,4 +942,43 @@ Shifts now match the ground-truth generator multipliers and are visible on the s
 
 **Follow-ups.** Open-Meteo integration (FEAT-018) replaces the static override magnitudes with real forecast weather; the scenario dropdown then becomes a what-if override on top of fetched conditions.
 
+### FEAT-018 — Backend prep for React frontend: CORS, Open-Meteo, aggregated endpoint
+
+- **Status:** Shipped
+- **Type:** Feature
+
+**Context.** The product is moving to a React manager-facing frontend (Netlify) calling the FastAPI backend (Render), with Streamlit retained as the internal admin tool. Three backend changes were needed before the frontend work could start: cross-origin access, real weather, and a single aggregated endpoint so the React pages make one call instead of three.
+
+**Decision.**
+
+1. **CORS** — added `CORSMiddleware` to `app/main.py`. Local Vite ports (`5173`, `4173`, `127.0.0.1:5173`) always allowed; deployed origins configurable via `RMS_CORS_ORIGINS` (comma-separated env var).
+
+2. **Open-Meteo integration** — new `app/integrations/weather.py`:
+   - `get_hourly_weather(date, lat, lon, tz)` → `{hour: {temp, rain_mm, condition_code}}` for service hours, `lru_cache`d per (date, location).
+   - `get_day_summary(date)` → aggregated `{avg_temp, total_rain_mm, peak_rain_mm, label, source}` for UI display.
+   - Key-less free API; ~16-day forecast horizon. Falls back to `None` (callers use neutral weather) on API failure or out-of-horizon dates.
+   - `condition_code` mapping mirrors the generator's rules, so fetched weather is schema-compatible with what the model trained on.
+   - Location via `RMS_LAT` / `RMS_LON` / `RMS_TZ` env vars (default placeholder: London).
+
+3. **Weather flows into prediction** — `covers.predict_day(..., use_weather=True)` now:
+   - Fetches the live forecast and populates the base feature row per service hour.
+   - Then applies any `reason_tag` scenario override on top (manual what-if always wins over the fetched forecast).
+
+4. **Aggregated endpoints** — `app/api/forecast.py`:
+   - `GET /forecast/day?target=&reason_tag=&use_weather=` → `{date, reason_tag, weather, covers, totals, staff}` in one payload.
+   - `GET /forecast/weather?target=` → day-summary weather.
+   - `GET /forecast/covers` gained a `use_weather` query param.
+
+**Verification.** Live Open-Meteo fetch returns real hourly data for near-future dates. `/forecast/day` returns 200 with all five keys, correct totals, and a weather label. `rain_heavy` what-if override still drops dine-in below the fetched-clear-weather forecast. All 13 smoke tests pass.
+
+**Deviation from initial plan.** `PLANNING.md` did not anticipate a separate React frontend (it assumed Streamlit only). This is a deliberate architecture evolution: React (Netlify) for managers, FastAPI + models + persistent disk (Render) for the backend, Streamlit (admin) reading the same models. Models always live server-side with FastAPI.
+
+**Alternatives considered.**
+- *Paid weather API (OpenWeatherMap).* Rejected — Open-Meteo is free, key-less, and sufficient.
+- *Three separate React calls per page.* Rejected — the aggregated `/forecast/day` keeps the UI snappy and the client simple.
+
+**Rollback plan.** Revert `app/main.py`, `app/api/forecast.py`, `app/predict/covers.py`; delete `app/integrations/`.
+
+**Follow-ups.** FEAT-019 — Vite/React frontend consuming these endpoints.
+
 <!-- Add new entries below this line. -->
