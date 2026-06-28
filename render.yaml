@@ -1,0 +1,57 @@
+# Render Blueprint — provisions the whole RRPS system in one deploy.
+#
+#   1. rrps-backend  — FastAPI + models + persistent disk (the self-learning state)
+#   2. rrps-frontend — React static site (CDN, no cold start)
+#
+# Deploy: Render Dashboard → New → Blueprint → connect this repo.
+# See DEPLOY.md for the full walkthrough.
+
+services:
+  # ----------------------------------------------------------------------------
+  # Backend API (stateful — holds the trained models + corrections)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: rrps-backend
+    runtime: python
+    plan: starter            # "starter" required for the disk. Use "free" for an
+                             # ephemeral demo (remove the `disk:` block too).
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash start.sh
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: RMS_LAT
+        value: "23.9999"
+      - key: RMS_LON
+        value: "90.4203"
+      - key: RMS_TZ
+        value: "Asia/Dhaka"
+      # Optional explicit CORS allow-list (the app already allows *.onrender.com
+      # and *.netlify.app via regex, so this is usually unnecessary).
+      - key: RMS_CORS_ORIGINS
+        sync: false
+    disk:
+      name: rrps-artifacts
+      mountPath: /opt/render/project/src/artifacts
+      sizeGB: 1
+
+  # ----------------------------------------------------------------------------
+  # Frontend static site (stateless)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: rrps-frontend
+    runtime: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    autoDeploy: true
+    envVars:
+      # Build-time. Set this to the backend's URL after the first deploy, then
+      # trigger a frontend redeploy so Vite bakes it into the bundle.
+      - key: VITE_API_BASE
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

@@ -31,8 +31,13 @@ _extra_origins = [o.strip() for o in os.getenv("RMS_CORS_ORIGINS", "").split(","
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_default_origins + _extra_origins,
-    # Any localhost port in dev (Vite drifts to 5174/5175 when 5173 is busy).
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    # Dev: any localhost port (Vite drifts to 5174/5175 when 5173 is busy).
+    # Prod: any onrender.com / netlify.app subdomain, so the frontend works
+    # without hardcoding its exact URL. Tighten via RMS_CORS_ORIGINS if needed.
+    allow_origin_regex=(
+        r"http://(localhost|127\.0\.0\.1):\d+"
+        r"|https://([a-z0-9-]+\.)*(onrender\.com|netlify\.app)"
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
