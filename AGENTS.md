@@ -981,4 +981,41 @@ Shifts now match the ground-truth generator multipliers and are visible on the s
 
 **Follow-ups.** FEAT-019 — Vite/React frontend consuming these endpoints.
 
+### FEAT-019 — React manager frontend (Vite) scaffolded under /frontend
+
+- **Status:** Shipped
+- **Type:** Feature
+
+**Context.** The manager-facing UI is moving off Streamlit to a modern React app. Streamlit is retained as the internal/admin dashboard (Dataset Explorer, Validation, Coefficient Inspector, Model Health). Decision recorded: React (Netlify) + FastAPI/models (Render) + Streamlit admin. Models always stay server-side with FastAPI; React holds zero model code.
+
+**Decision.** Scaffold a Vite + React + TypeScript SPA under `/frontend` (monorepo subfolder).
+
+- **Stack:** Vite 5, React 18, TypeScript (strict), Tailwind CSS v4 (`@tailwindcss/vite` plugin), TanStack Query, Recharts, React Router.
+- **API client** (`src/lib/api.ts`) — typed wrapper over the backend; base URL from `VITE_API_BASE`.
+- **Types** (`src/lib/types.ts`) — mirror the FastAPI response shapes (DayForecast, OrderLine, CorrectionResult, ChannelMetrics, etc.).
+- **Four manager pages:**
+  - **Home** — KPI cards (tomorrow's customers, peak cooks/servers, 7-day accuracy), weather card, channel breakdown, top orders due.
+  - **Forecast** — date + scenario picker, weather card, hourly stacked covers chart (Recharts), channel totals, full staffing table + per-role person-hours.
+  - **Orders** — horizon slider, ingredient cards with stock-vs-need progress bars and shelf-life-capped badges.
+  - **Feedback** — correction form (date/hour/channel/actual/reason) posting to `/corrections`; success panel shows predicted vs reported vs learned adjustment vs total corrections.
+- **Design system** (`src/components/ui.tsx`) — Card, MetricCard, Badge, Spinner, ErrorBox; sidebar Layout. Channel colors match the existing palette.
+- **Deploy config** — `netlify.toml` + `public/_redirects` for SPA routing; `.env.example` documents `VITE_API_BASE`.
+
+**Verification.**
+- `npm run build` (tsc --noEmit + vite build) passes clean after adding `src/vite-env.d.ts` for `import.meta.env` typing and dropping an unused import.
+- Backend started on :8000, Vite dev server on :5173; both serve. `/forecast/day` returns the aggregated payload the Home/Forecast pages consume.
+
+**Deviation from initial plan.** `PLANNING.md` assumed Streamlit-only. This adds a separate React surface; Streamlit is reframed as the admin tool. Documented in README §7 (full-system local run).
+
+**Alternatives considered.**
+- *Next.js.* Rejected for this POC — SSR not needed for an internal dashboard; Vite SPA is simpler to deploy on Netlify (user's hosting preference).
+- *Separate repo for the frontend.* Rejected — monorepo subfolder is simpler for a solo project; Netlify builds from the `frontend` base dir, Render from root.
+
+**Rollback plan.** Delete `/frontend`. Backend and Streamlit are unaffected.
+
+**Follow-ups.**
+- Backend deploy to Render with a persistent disk for `artifacts/` (models + DB + corrections survive restarts).
+- Frontend deploy to Netlify with `VITE_API_BASE` pointing at the Render URL and the Render `RMS_CORS_ORIGINS` set to the Netlify domain.
+- Optional: chart code-splitting (Recharts pushes the bundle >500kB), polish, mobile pass.
+
 <!-- Add new entries below this line. -->

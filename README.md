@@ -376,7 +376,35 @@ uvicorn app.main:app --reload
 #    → http://localhost:8000/docs
 ```
 
-The dashboard is the primary surface. The API is exposed for external clients and for the smoke test suite.
+The Streamlit dashboard is the internal/admin surface. The FastAPI API serves the React manager app, external clients, and the smoke test suite.
+
+### Running the full system locally (React + API + admin)
+
+The system runs as three independent processes, mirroring the production split (React on Netlify, FastAPI on Render, Streamlit as admin):
+
+```bash
+# Terminal 1 — backend API (serves the React app + admin)
+uvicorn app.main:app --reload
+#   → http://localhost:8000   (OpenAPI docs at /docs)
+
+# Terminal 2 — React manager frontend
+cd frontend
+npm install
+npm run dev
+#   → http://localhost:5173
+
+# Terminal 3 — Streamlit admin dashboard (optional, technical views)
+streamlit run dashboard/streamlit_app.py
+#   → http://localhost:8501
+```
+
+| Surface | URL | Audience | Pages |
+|---|---|---|---|
+| React app | http://localhost:5173 | Restaurant manager | Home, Forecast, Orders, Feedback |
+| FastAPI | http://localhost:8000 | Clients / React | REST + OpenAPI docs |
+| Streamlit | http://localhost:8501 | Data team / admin | Dataset Explorer, Validation, Coefficient Inspector, Model Health |
+
+The React frontend reads `VITE_API_BASE` (default `http://localhost:8000`) from `frontend/.env`. See [frontend/README.md](frontend/README.md) for details.
 
 ---
 
