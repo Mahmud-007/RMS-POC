@@ -1,24 +1,31 @@
 # Render Blueprint — provisions the whole RRPS system in one deploy.
 #
-#   1. rrps-backend  — FastAPI + models + persistent disk (the self-learning state)
+#   1. rrps-backend  — FastAPI + models (FREE tier; see persistence note below)
 #   2. rrps-frontend — React static site (CDN, no cold start)
 #
 # Deploy: Render Dashboard → New → Blueprint → connect this repo.
 # See DEPLOY.md for the full walkthrough.
+#
+# PERSISTENCE NOTE
+# ----------------
+# This file targets the FREE tier so it deploys on a free workspace. On free,
+# the filesystem is ephemeral: the backend re-bootstraps (regenerates data +
+# retrains) on every cold start, and manager corrections reset to the warm-start
+# baseline. To retain accumulated learning, upgrade the backend to a paid plan
+# and add a disk — uncomment the `plan: starter` + `disk:` lines below.
 
 services:
   # ----------------------------------------------------------------------------
-  # Backend API (stateful — holds the trained models + corrections)
+  # Backend API
   # ----------------------------------------------------------------------------
   - type: web
     name: rrps-backend
     runtime: python
-    plan: starter            # "starter" required for the disk. Use "free" for an
-                             # ephemeral demo (remove the `disk:` block too).
+    plan: free
+    # plan: starter           # <- for persistence: switch to starter and add the disk below
     buildCommand: pip install -r requirements.txt
     startCommand: bash start.sh
     healthCheckPath: /health
-    autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
@@ -28,27 +35,21 @@ services:
         value: "90.4203"
       - key: RMS_TZ
         value: "Asia/Dhaka"
-      # Optional explicit CORS allow-list (the app already allows *.onrender.com
-      # and *.netlify.app via regex, so this is usually unnecessary).
-      - key: RMS_CORS_ORIGINS
-        sync: false
-    disk:
-      name: rrps-artifacts
-      mountPath: /opt/render/project/src/artifacts
-      sizeGB: 1
+    # disk:                    # <- for persistence (requires a paid plan)
+    #   name: rrps-artifacts
+    #   mountPath: /opt/render/project/src/artifacts
+    #   sizeGB: 1
 
   # ----------------------------------------------------------------------------
-  # Frontend static site (stateless)
+  # Frontend static site
   # ----------------------------------------------------------------------------
   - type: web
     name: rrps-frontend
     runtime: static
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
-    autoDeploy: true
     envVars:
-      # Build-time. Set this to the backend's URL after the first deploy, then
-      # trigger a frontend redeploy so Vite bakes it into the bundle.
+      # Build-time. Set to the backend URL after first deploy, then redeploy.
       - key: VITE_API_BASE
         sync: false
     routes:
