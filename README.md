@@ -1,8 +1,8 @@
 # Restaurant Management System (RMS) — Forecasting POC
 
-> 🍽️ **Live demo:** **<https://rms-poc.streamlit.app/>**
+> ▶️ **Watch demo video:** **<https://www.loom.com/share/4549904c2f5a41bb8e792d3b2d897b87>**
 >
-> Click through the dashboard pages in the left sidebar. Submit a correction on the **Corrections** page and watch the SGD coefficients shift on **Coefficient Inspector**.
+> A quick walkthrough of the manager app — forecast, staffing, supplies, and the live feedback loop. (Full link again at the [end of this README](#21-watch-the-demo).)
 
 A forecasting + feedback-loop system for a single restaurant. Predicts **hourly covers**, **staffing**, and **ingredient orders** per channel (dine-in / delivery / takeaway), then learns online from manager corrections.
 
@@ -11,53 +11,52 @@ A forecasting + feedback-loop system for a single restaurant. Predicts **hourly 
 ## Table of Contents
 
 1. [What this project is](#1-what-this-project-is)
-2. [Live demo](#2-live-demo)
-3. [The problem](#3-the-problem)
-4. [Philosophy — why this approach](#4-philosophy--why-this-approach)
-    - 4.1 [Alternative considered — LLM with tools](#41-alternative-considered--llm-with-tools)
-    - 4.2 [What I chose — hybrid ML model](#42-what-we-chose--hybrid-ml-model)
-    - 4.3 [Why LightGBM as the base model](#43-why-lightgbm-as-the-base-model)
-    - 4.4 [Why SGDRegressor as the online correction layer](#44-why-sgdregressor-as-the-online-correction-layer)
-    - 4.5 [Why not SARIMAX, Prophet, or TFT](#45-why-not-sarimax-prophet-or-tft)
-5. [Dataset insights — what the data tells us](#5-dataset-insights--what-the-data-tells-us)
-    - 5.1 [Daily covers across the full window](#51-daily-covers-across-the-full-window)
-    - 5.2 [Intraday demand shape](#52-intraday-demand-shape)
-    - 5.3 [Saturday dinner is the binding peak](#53-saturday-dinner-is-the-binding-peak)
-    - 5.4 [Rain reroutes demand across channels](#54-rain-reroutes-demand-across-channels)
-    - 5.5 [One-paragraph summary](#55-one-paragraph-summary)
-    - 5.6 [Operational implications](#56-operational-implications)
-6. [Architecture](#6-architecture)
-    - 6.1 [Two-layer model](#61-two-layer-model)
-    - 6.2 [Data flow](#62-data-flow)
-    - 6.3 [Per-channel design](#63-per-channel-design)
-    - 6.4 [Feature set](#64-feature-set)
-    - 6.5 [Reason tags](#65-reason-tags)
-    - 6.6 [Residual clipping](#66-residual-clipping)
-7. [Quick start — running locally](#7-quick-start--running-locally)
-8. [Docker](#8-docker)
-9. [Repository layout](#9-repository-layout)
-10. [Dashboard walkthrough](#10-dashboard-walkthrough)
-    - 10.1 [Dataset Explorer](#101-dataset-explorer)
-    - 10.2 [Validation](#102-validation)
-    - 10.3 [Today / Tomorrow](#103-today--tomorrow)
-    - 10.4 [Order Sheet](#104-order-sheet)
-    - 10.5 [Corrections](#105-corrections)
-    - 10.6 [Model Health](#106-model-health)
-    - 10.7 [Coefficient Inspector](#107-coefficient-inspector)
-11. [API reference](#11-api-reference)
-12. [The synthetic dataset](#12-the-synthetic-dataset)
-13. [Metrics explained — MAE, MAPE, bias, R²](#13-metrics-explained--mae-mape-bias-r²)
-14. [The feedback loop in detail](#14-the-feedback-loop-in-detail)
-15. [Proving the model improves with data](#15-proving-the-model-improves-with-data)
-16. [Tests](#16-tests)
-17. [Deployment](#17-deployment)
-    - 17.1 [Streamlit Community Cloud](#171-streamlit-community-cloud)
-    - 17.2 [Hugging Face Spaces](#172-hugging-face-spaces)
-    - 17.3 [Render](#173-render)
-18. [Limitations and honest caveats](#18-limitations-and-honest-caveats)
-19. [Future work](#19-future-work)
-20. [Glossary](#20-glossary)
-21. [Further reading](#21-further-reading)
+2. [The problem](#2-the-problem)
+3. [Philosophy — why this approach](#3-philosophy--why-this-approach)
+    - 3.1 [Alternative considered — LLM with tools](#31-alternative-considered--llm-with-tools)
+    - 3.2 [What I chose — hybrid ML model](#32-what-i-chose--hybrid-ml-model)
+    - 3.3 [Why LightGBM as the base model](#33-why-lightgbm-as-the-base-model)
+    - 3.4 [Why SGDRegressor as the online correction layer](#34-why-sgdregressor-as-the-online-correction-layer)
+    - 3.5 [Why not SARIMAX, Prophet, or TFT](#35-why-not-sarimax-prophet-or-tft)
+4. [Dataset insights — what the data tells us](#4-dataset-insights--what-the-data-tells-us)
+    - 4.1 [Daily covers across the full window](#41-daily-covers-across-the-full-window)
+    - 4.2 [Intraday demand shape](#42-intraday-demand-shape)
+    - 4.3 [Saturday dinner is the binding peak](#43-saturday-dinner-is-the-binding-peak)
+    - 4.4 [Rain reroutes demand across channels](#44-rain-reroutes-demand-across-channels)
+    - 4.5 [One-paragraph summary](#45-one-paragraph-summary)
+    - 4.6 [Operational implications](#46-operational-implications)
+5. [Architecture](#5-architecture)
+    - 5.1 [Two-layer model](#51-two-layer-model)
+    - 5.2 [Data flow](#52-data-flow)
+    - 5.3 [Per-channel design](#53-per-channel-design)
+    - 5.4 [Feature set](#54-feature-set)
+    - 5.5 [Reason tags](#55-reason-tags)
+    - 5.6 [Residual clipping](#56-residual-clipping)
+6. [Quick start — running locally](#6-quick-start--running-locally)
+7. [Docker](#7-docker)
+8. [Repository layout](#8-repository-layout)
+9. [Dashboard walkthrough](#9-dashboard-walkthrough)
+    - 9.1 [Dataset Explorer](#91-dataset-explorer)
+    - 9.2 [Validation](#92-validation)
+    - 9.3 [Today / Tomorrow](#93-today--tomorrow)
+    - 9.4 [Order Sheet](#94-order-sheet)
+    - 9.5 [Corrections](#95-corrections)
+    - 9.6 [Model Health](#96-model-health)
+    - 9.7 [Coefficient Inspector](#97-coefficient-inspector)
+10. [API reference](#10-api-reference)
+11. [The synthetic dataset](#11-the-synthetic-dataset)
+12. [Metrics explained — MAE, MAPE, bias, R²](#12-metrics-explained--mae-mape-bias-r²)
+13. [The feedback loop in detail](#13-the-feedback-loop-in-detail)
+14. [Proving the model improves with data](#14-proving-the-model-improves-with-data)
+15. [Tests](#15-tests)
+16. [Deployment](#16-deployment)
+    - 16.1 [Streamlit Community Cloud](#161-streamlit-community-cloud)
+    - 16.2 [Render](#162-render)
+17. [Limitations and honest caveats](#17-limitations-and-honest-caveats)
+18. [Roadmap — upcoming features](#18-roadmap--upcoming-features)
+19. [Glossary](#19-glossary)
+20. [Further reading](#20-further-reading)
+21. [Watch the demo](#21-watch-the-demo)
 
 ---
 
@@ -77,24 +76,7 @@ This is **not** a one-shot model. It is a **feedback loop**.
 
 ---
 
-## 2. Live demo
-
-👉 **<https://rms-poc.streamlit.app/>**
-
-A public Streamlit Community Cloud deployment. The first page load may take 30–60 seconds while the container bootstraps the synthetic dataset and trains the models. Subsequent loads are instant.
-
-The hosted deployment exposes the dashboard only (no separate API surface). The dashboard calls the same Python service functions the API exposes locally — there is no functional difference.
-
-Things to try on the live demo:
-
-- **Dataset Explorer** → switch channels to see how rain affects each one.
-- **Today / Tomorrow** → change the *Scenario (what-if reason tag)* dropdown between `normal`, `rain_heavy`, `event_holiday`, `promo`. Watch the hourly bars shift.
-- **Corrections** → submit `actual = 20` for `dine_in` at `19:00` with reason `rain_heavy`. Then go to **Coefficient Inspector** → channel `dine_in` → see the `reason_rain_heavy` coefficient changed.
-- **Model Health** → click *Retrain base* or *Reset SGD* and watch the registry update.
-
----
-
-## 3. The problem
+## 2. The problem
 
 Restaurants lose money in two directions:
 
@@ -113,11 +95,11 @@ Item 3 is the differentiator. Anyone can build a one-shot forecaster. The intere
 
 ---
 
-## 4. Philosophy — why this approach
+## 3. Philosophy — why this approach
 
 Before writing any code I considered two fundamentally different solutions. The chosen one is justified below by elimination.
 
-### 4.1 Alternative considered — LLM with tools
+### 3.1 Alternative considered — LLM with tools
 
 The first solution I explored was an **agentic LLM** as the forecasting "brain", with three tools to gather context:
 
@@ -135,7 +117,7 @@ A second, related issue: there is no clean way for an LLM to **learn online** fr
 
 For a time-series forecasting problem where calibration and online adaptation are the whole game, the LLM-with-tools architecture is the wrong tool. It is excellent at unstructured reasoning; it is poor at numeric calibration with a feedback loop.
 
-### 4.2 What I chose — hybrid ML model
+### 3.2 What I chose — hybrid ML model
 
 This problem is **time-series forecasting** with hourly granularity, per-channel splits, calendar cycles, weather sensitivity, and the requirement to absorb manager corrections in real time.
 
@@ -145,13 +127,13 @@ The right tool family for time-series forecasting on tabular data is **gradient-
 - The residual model captures fast-moving drift and human-tagged corrections.
 - The combination is calibrated by construction and can update its coefficients on every single correction without retraining.
 
-### 4.3 Why LightGBM as the base model
+### 3.3 Why LightGBM as the base model
 
 For tabular regression of this shape — moderate row count, mixed categorical and continuous features, strong interactions between features (`rain × channel × hour`), and the need to retrain weekly without manual tuning — **LightGBM gives the best accuracy-to-effort ratio** of any model class.
 
 It handles categorical features natively (no manual one-hot encoding), discovers feature interactions through its split tree structure, trains in seconds on this dataset, and produces a single binary artifact per channel that can be persisted to disk and shipped.
 
-### 4.4 Why SGDRegressor as the online correction layer
+### 3.4 Why SGDRegressor as the online correction layer
 
 LightGBM has **no true online learning**. Its `init_model` parameter supports adding more trees to an existing booster, but that is **batch continuation** — it requires a batch of new data and a fresh training run. It is not a per-sample update mechanism.
 
@@ -168,7 +150,7 @@ The role split is therefore:
 
 When the manager gives feedback, the system reacts **immediately** — the next forecast call uses the updated SGD coefficients. That reactivity is the property a POC needs to demonstrate, and `partial_fit` is what makes it possible.
 
-### 4.5 Why not SARIMAX, Prophet, or TFT
+### 3.5 Why not SARIMAX, Prophet, or TFT
 
 For a production-grade demand forecasting system on this domain, **SARIMAX** (seasonal ARIMA with exogenous regressors), **Prophet**, or **TFT** (Temporal Fusion Transformer) would all be defensible — and in some respects superior — choices.
 
@@ -183,11 +165,11 @@ LightGBM + SGD is a **simpler, more interpretable** combination that captures th
 
 ---
 
-## 5. Dataset insights — what the data tells us
+## 4. Dataset insights — what the data tells us
 
-Before talking about the architecture, it is worth looking at the data the model trains on. Four figures convey the structure that drives every downstream decision. Full analysis (seven figures, all three per-channel heatmaps, dataset limitations) lives in **[docs/DATA_INSIGHTS.md](docs/DATA_INSIGHTS.md)**. The synthetic dataset's drivers and generator are documented in [Section 12](#12-the-synthetic-dataset).
+Before talking about the architecture, it is worth looking at the data the model trains on. Four figures convey the structure that drives every downstream decision. Full analysis (seven figures, all three per-channel heatmaps, dataset limitations) lives in **[docs/DATA_INSIGHTS.md](docs/DATA_INSIGHTS.md)**. The synthetic dataset's drivers and generator are documented in [Section 11](#11-the-synthetic-dataset).
 
-### 5.1 Daily covers across the full window
+### 4.1 Daily covers across the full window
 
 ![Daily covers per channel](docs/figures/01_daily_covers.png)
 
@@ -197,19 +179,19 @@ Three things to notice:
 - A **red dashed line** marks a regime shift: delivery roughly **doubles** its baseline from that day forward, while dine-in and takeaway are unaffected. This is the non-stationarity the residual layer is designed to absorb.
 - Vertical dotted ticks are holidays (purple), local events (gold), promos (light blue). Holidays produce simultaneous spikes across all three channels — customers do not substitute between channels on a holiday, they raise overall consumption together.
 
-### 5.2 Intraday demand shape
+### 4.2 Intraday demand shape
 
 ![Average covers by hour of day](docs/figures/02_hour_of_day.png)
 
 A clean **bimodal curve**: lunch peak around 12–14, dinner peak around 19–21. Dinner is the taller of the two. A pronounced dead zone between 15:00 and 17:00 — all three channels collapse there. This is the cell where staffing waste is biggest if a manager forces standard cover.
 
-### 5.3 Saturday dinner is the binding peak
+### 4.3 Saturday dinner is the binding peak
 
 ![Hour × day-of-week heatmap, dine-in](docs/figures/04_heatmap_dine_in.png)
 
 The brightest cell on the dine-in heatmap is **Saturday 19–20:00**, followed by Friday and Sunday at the same hour. Sunday lunch shows a secondary hot spot — a brunch / family-meal signature. Peak staffing should be anchored on the Saturday dinner cell; everything else sizes down from it.
 
-### 5.4 Rain reroutes demand across channels
+### 4.4 Rain reroutes demand across channels
 
 ![Rain effect on covers](docs/figures/05_rain_effect.png)
 
@@ -221,11 +203,11 @@ Customers do not disappear when it rains, they **change channel**:
 
 The dine-in loss is larger than the delivery gain, so total covers contract under rain — not all displaced dine-in customers convert to delivery. This is also why I train **one model per channel**: a single model with a global rain coefficient would average these effects out and predict badly for both.
 
-### 5.5 One-paragraph summary
+### 4.5 One-paragraph summary
 
 > Demand is driven primarily by a **calendar signal** (day-of-week + hour-of-day + holidays) that all three channels share, plus a **weather signal** that splits them: rain pushes demand from dine-in into delivery while takeaway is insensitive. A structural break inside the window doubles delivery's baseline — non-stationarity exists in the data and any forecaster must adapt to it. Customers behave like three semi-overlapping populations: weekend dine-out diners, rain-shifting delivery users, and steady takeaway buyers. Saturday dinner is the binding peak; the 15–17 dead zone is the binding waste opportunity.
 
-### 5.6 Operational implications
+### 4.6 Operational implications
 
 | Decision | Anchor on |
 |---|---|
@@ -240,9 +222,9 @@ The dine-in loss is larger than the delivery gain, so total covers contract unde
 
 ---
 
-## 6. Architecture
+## 5. Architecture
 
-### 6.1 Two-layer model
+### 5.1 Two-layer model
 
 ```
                  ┌─────────────────────────────┐
@@ -272,7 +254,7 @@ Features  ─────► │  LightGBM base (per channel)│ ──► base_
                  └─────────────────────────────┘
 ```
 
-### 6.2 Data flow
+### 5.2 Data flow
 
 ```
 Synthetic generator ──► SQLite ──► Feature builder ──► LightGBM base
@@ -294,13 +276,13 @@ Synthetic generator ──► SQLite ──► Feature builder ──► LightGB
                                   Restaurant manager
 ```
 
-### 6.3 Per-channel design
+### 5.3 Per-channel design
 
 The system trains **one base model and one residual model per channel**: dine-in, delivery, takeaway.
 
 This is not a stylistic choice — it is forced by the data. Rain has **opposite signs** across channels: it reduces dine-in covers and increases delivery covers. A single combined model would average those out and predict badly for both. Per-channel models keep each channel's response curve honest.
 
-### 6.4 Feature set
+### 5.4 Feature set
 
 **Base features (17, used by LightGBM):**
 
@@ -315,7 +297,7 @@ Categorical features (`dow`, `hour`, `month`, `condition_code`) are passed to Li
 
 **Residual features (28, used by SGD):** the 17 base features plus two interaction features (`rain_x_weekend`, `rain_x_dinner`), the base model's prediction itself (`base_pred`), and eight reason-tag one-hots (`reason_normal`, `reason_rain_heavy`, …).
 
-### 6.5 Reason tags
+### 5.5 Reason tags
 
 When a manager submits a correction, they pick one tag from a closed vocabulary:
 
@@ -328,7 +310,7 @@ Each tag is a one-hot input to the SGD residual model. The SGD learns one coeffi
 
 The SGD is warm-started with reason tags derived from historical features (e.g. `rain_mm > 3 → rain_heavy`) so the dropdown is meaningful from day one. Manager corrections then refine those starting points.
 
-### 6.6 Residual clipping
+### 5.6 Residual clipping
 
 The final prediction is:
 
@@ -346,7 +328,7 @@ If a residual repeatedly hits the cap in the same direction, that is a signal th
 
 ---
 
-## 7. Quick start — running locally
+## 6. Quick start — running locally
 
 ```bash
 git clone https://github.com/Mahmud-007/RMS-POC
@@ -408,20 +390,20 @@ The React frontend reads `VITE_API_BASE` (default `http://localhost:8000`) from 
 
 ---
 
-## 8. Docker
+## 7. Docker
 
 ```bash
 docker build -t rms .
 docker run -p 7860:7860 -p 8000:8000 -v $(pwd)/artifacts:/srv/artifacts rms
 ```
 
-The image starts the API on port `8000` and the dashboard on port `7860` (the port Hugging Face Spaces expects). The `artifacts/` mount lets the SQLite database and persisted models survive container restarts.
+The image starts the API on port `8000` and the dashboard on port `7860`. The `artifacts/` mount lets the SQLite database and persisted models survive container restarts.
 
 If `artifacts/rms.db` is missing on container start, the entrypoint will bootstrap it: generate the dataset and train both models before starting the servers. This means a clean `docker run` produces a working demo with zero manual setup.
 
 ---
 
-## 9. Repository layout
+## 8. Repository layout
 
 ```
 RMS/
@@ -452,11 +434,11 @@ RMS/
 
 ---
 
-## 10. Dashboard walkthrough
+## 9. Dashboard walkthrough
 
 The dashboard has seven pages selectable from the left sidebar. Recommended demo order:
 
-### 10.1 Dataset Explorer
+### 9.1 Dataset Explorer
 
 Inspect the data the model trains on. Filters: date range, channels. Charts:
 
@@ -468,11 +450,11 @@ Inspect the data the model trains on. Filters: date range, channels. Charts:
 
 Use this page to confirm the dataset has the structure the model is supposed to learn from.
 
-### 10.2 Validation
+### 9.2 Validation
 
 Base-model accuracy on the last 28-day holdout window. Per-channel summary table (MAE, MAPE, bias, R²). Actual-vs-predicted line charts per channel. Useful as the calibration check before you trust any other page.
 
-### 10.3 Today / Tomorrow
+### 9.3 Today / Tomorrow
 
 Operational forecast for a chosen date.
 
@@ -483,7 +465,7 @@ Operational forecast for a chosen date.
 - **Recommended staffing** — per-hour, per-role table + daily person-hours per role.
 - **Base vs residual breakdown** (collapsible) — shows where the residual layer is adding or subtracting on top of the base.
 
-### 10.4 Order Sheet
+### 9.4 Order Sheet
 
 Ingredient orders over the supplier lead-time horizon.
 
@@ -492,7 +474,7 @@ Ingredient orders over the supplier lead-time horizon.
 - **Shelf-life warnings** appear when the cap is binding (the recommended order is less than the raw need because the kitchen cannot use the surplus before spoilage).
 - **Approve order** button — a no-op stub for the POC; would integrate with a supplier API in production.
 
-### 10.5 Corrections
+### 9.5 Corrections
 
 The feedback loop.
 
@@ -502,7 +484,7 @@ The feedback loop.
 
 This is where the model gets smarter. Every submission moves the SGD coefficients.
 
-### 10.6 Model Health
+### 9.6 Model Health
 
 Operational view of model state.
 
@@ -513,7 +495,7 @@ Operational view of model state.
 - **Retrain base** and **Reset SGD residual** buttons — re-run the trainers in-process and show summary JSON.
 - Full model registry table.
 
-### 10.7 Coefficient Inspector
+### 9.7 Coefficient Inspector
 
 What the model has learned.
 
@@ -523,7 +505,7 @@ What the model has learned.
 
 ---
 
-## 11. API reference
+## 10. API reference
 
 ```
 GET  /health
@@ -570,7 +552,7 @@ Response:
 
 ---
 
-## 12. The synthetic dataset
+## 11. The synthetic dataset
 
 No real restaurant data was available for this POC, so the system runs on a **reproducible synthetic dataset** generated by `app/data/generator.py`.
 
@@ -601,7 +583,7 @@ For a deeper customer-behavior analysis with embedded figures, see [docs/DATA_IN
 
 ---
 
-## 13. Metrics explained — MAE, MAPE, bias, R²
+## 12. Metrics explained — MAE, MAPE, bias, R²
 
 The Validation page and Model Health page show four metrics. Each captures a different failure mode.
 
@@ -649,7 +631,7 @@ A practical rule of thumb for restaurant demand:
 
 ---
 
-## 14. The feedback loop in detail
+## 13. The feedback loop in detail
 
 The mechanics of a single correction:
 
@@ -687,7 +669,7 @@ Important properties:
 
 ---
 
-## 15. Proving the model improves with data
+## 14. Proving the model improves with data
 
 Four levels of evidence, weakest to strongest.
 
@@ -707,7 +689,7 @@ On the stationary baseline window the hybrid roughly matches the base — *which
 
 ---
 
-## 16. Tests
+## 15. Tests
 
 ```bash
 python -m pytest tests/ -v
@@ -728,47 +710,22 @@ Tests assume the synthetic dataset has been generated and both models trained. T
 
 ---
 
-## 17. Deployment
+## 16. Deployment
 
-The dashboard is designed to run on **free-tier hosting** with zero cost. Three paths are tested.
+The dashboard is designed to run on **free-tier hosting** with zero cost. Two paths are tested.
 
-### 17.1 Streamlit Community Cloud
-
-The current live deployment at **<https://rms-poc.streamlit.app/>** runs on Streamlit Community Cloud.
-
-1. Sign in at <https://share.streamlit.io> with GitHub.
-2. **New app** → select repo, branch `main`, main file `dashboard/streamlit_app.py`.
-3. Deploy.
-
-The first page load runs the bootstrap (~30–60 seconds) since the cloud's filesystem is ephemeral. Subsequent loads are instant.
-
-Limits: 1 GB RAM, public app, no separate API surface, SQLite resets when the container restarts (corrections submitted on the live demo are lost after a sleep cycle).
-
-### 17.2 Hugging Face Spaces
-
-For a full Docker deployment that keeps both API and dashboard, push the repo to a Docker Space:
-
-1. Create a new Space with **SDK: Docker**.
-2. Add the HF remote: `git remote add hf https://huggingface.co/spaces/<username>/<space-name>`.
-3. Push: `git push hf main`.
-
-The YAML frontmatter at the top of this file is read by Hugging Face to configure the Space (`sdk: docker`, `app_port: 7860`). GitHub renders the README skipping the frontmatter.
-
-Limits: 2 vCPU, 16 GB RAM on the free CPU tier. Ephemeral filesystem (the bootstrap re-runs on cold start).
-
-### 17.3 Render
+### 16.1 Render
 
 For an always-on URL with persistent storage:
 
-1. Connect the GitHub repo at <https://render.com> → New Web Service → Docker runtime.
-2. Free plan.
-3. Add a 1 GB free disk mounted at `/srv/artifacts` so the SQLite database survives restarts.
+1. Free plan.
+2. Add a 1 GB free disk mounted at `/srv/artifacts` so the SQLite database survives restarts.
 
 Limits: 750 hours/month free, 15-minute sleep after inactivity, ~60-second cold start.
 
 ---
 
-## 18. Limitations and honest caveats
+## 17. Limitations and honest caveats
 
 This is a POC. The following are known limitations that would need to be addressed before a production deployment.
 
@@ -780,28 +737,54 @@ This is a POC. The following are known limitations that would need to be address
 - **Reason-tag vocabulary is closed.** Adding a new tag requires a code change and a SGD reset (because the one-hot dimensionality changes).
 - **Supplier API not integrated.** The Order Sheet's *Approve order* button is a no-op.
 - **Linear residual layer.** If residuals against the base turn out to be genuinely non-linear in ways that hand-crafted interaction features cannot capture, the residual layer would need to be swapped for a tree-based online learner. The `ResidualModel` Protocol in `app/models/interfaces.py` allows this swap without touching the rest of the system.
-- **Free-tier storage is ephemeral.** On Streamlit Cloud and HF Spaces free tiers, the database and persisted models are wiped on container restart. The bootstrap regenerates them but corrections submitted between restarts are lost. Use Render with a free disk for persistent demos.
+- **Free-tier storage is ephemeral.** On Streamlit Cloud's free tier, the database and persisted models are wiped on container restart. The bootstrap regenerates them but corrections submitted between restarts are lost. Use Render with a free disk for persistent demos.
 
 ---
 
-## 19. Future work
+## 18. Roadmap — upcoming features
 
-Ranked by value-per-effort:
+This POC deliberately keeps a tight scope: it forecasts **covers**, then derives staffing and supplies from covers, and proves the **feedback loop** on the covers signal. The roadmap below is where it goes next, grouped by theme.
 
-1. **`predict_holdout_hybrid()`** — adds a base-vs-hybrid side-by-side view on the Validation page, directly proving the residual layer's value.
-2. **Drift-injection scenario** — backtest variant that multiplies actuals by `0.7` from a chosen midpoint to dramatize the convergence story.
-3. **Pre-correction prediction logging** — persist every forecast to the `predictions` table so the `/metrics` rolling MAE is computed against true predictions instead of inferred from the holdout.
-4. **CI workflow** — GitHub Actions that install, bootstrap, train, run tests.
-5. **Shift-pack optimization** — replace greedy packing with a small MIP for cost-minimal staffing schedules.
-6. **Per-channel dish mix** — currently restaurant-level; splitting by channel would improve order accuracy.
-7. **Confidence intervals** — quantile regression on the base or conformal prediction.
-8. **Real data ingestion** — POS API → SQLite, with the "max timestamp ≤ now" invariant enforced at the ingestion boundary.
-9. **Multi-tenant** — `restaurant_id` everywhere plus auth.
-10. **Supplier API integration** — wire the *Approve order* button to a real supplier endpoint.
+### Smarter forecasting
+
+- **Independent ingredient / menu-item demand.** Today, ingredient orders are derived from covers × a fixed dish-mix. But ingredient demand isn't always proportional to headcount — it has its own seasonality. **Example: in December, pastry sales climb regardless of total covers, so pastry ingredients need to be stocked up well before the season.** The system will forecast item-level (and ingredient-level) demand as its own time series — capturing seasonal and calendar effects — so supplies are planned on *what people order*, not just *how many people came*.
+- **Confidence intervals.** Show a forecast range (e.g. 90–140 covers) instead of a single point, via quantile regression or conformal prediction.
+- **Per-channel dish mix.** Delivery skews to different items than dine-in; model the mix per channel.
+- **Pluggable base model.** Option to swap LightGBM for SARIMAX / Prophet / a Temporal Fusion Transformer as data grows.
+
+### Closing the remaining feedback loops
+
+Today only the **covers** forecast learns from corrections. Staffing and supplies ride on fixed rules. Next:
+
+- **Staffing throughput loop.** Let managers report over/under-staffing (or actual headcount), and learn the covers-per-hour throughput per role over time.
+- **Supplies usage & waste loop.** Capture actual ingredient consumption, spoilage, and true recipe yield, and tune dish-mix and safety stock from reality.
+
+### Data & input
+
+- **Bulk / file import on Report Results.** Upload a **CSV export** or a **photo** of the day's sales report and auto-extract the actuals (OCR / vision) — no manual typing. *(Flagged as "coming soon" in the app.)*
+- **POS integration.** Auto-ingest real covers from the point-of-sale system, removing manual reporting entirely.
+- **Events & promotions calendar.** Holidays, local festivals, match nights, and promos as first-class, recurring inputs.
+- **Incoming-deliveries awareness.** Net out orders already in transit when recommending what to buy.
+- **Supplier integration.** Actually submit/approve orders to suppliers, and track supplier lead-time reliability.
+
+### Platform & operations
+
+- **Persistent learning storage.** Move state to a managed database so accumulated corrections survive restarts on free hosting.
+- **Auth, roles & audit log.** Who submitted which correction; manager vs admin permissions.
+- **Multi-location.** Per-restaurant models plus cross-location benchmarking.
+- **Labor-cost-optimal scheduling.** Replace greedy shift packing with cost-minimizing optimization.
+- **Alerts.** Notify on sharp forecast deviations or imminent stockouts.
+- **Production weather plan.** Switch Open-Meteo to its commercial endpoint, add a fallback provider, and use climatology for far-horizon ordering where forecasts are unreliable.
+
+### Engineering quality
+
+- **Pre-correction prediction logging** so `/metrics` rolling accuracy is measured against logged predictions.
+- **CI workflow** (GitHub Actions: install → bootstrap → train → test).
+- **Hybrid holdout view** — base-vs-hybrid side-by-side to visualize the residual layer's contribution.
 
 ---
 
-## 20. Glossary
+## 19. Glossary
 
 | Term | Meaning |
 |---|---|
@@ -825,7 +808,7 @@ Ranked by value-per-effort:
 
 ---
 
-## 21. Further reading
+## 20. Further reading
 
 - [PLANNING.md](PLANNING.md) — initial architecture document and scope reference.
 - [AGENTS.md](AGENTS.md) — living decision log: every feature implemented, every alternative considered, every trade-off, in append-only chronological order with full rationale.
@@ -833,4 +816,13 @@ Ranked by value-per-effort:
 
 For a one-line technical pitch:
 
-> A LightGBM base model that learns structural restaurant demand patterns, plus an SGDRegressor residual layer that absorbs manager-tagged corrections in real time through `partial_fit`. Per-channel models, residual capped at ±50% of base, all served through a 7-page Streamlit dashboard and a FastAPI surface.
+> A LightGBM base model that learns structural restaurant demand patterns, plus an SGDRegressor residual layer that absorbs manager-tagged corrections in real time through `partial_fit`. Per-channel models, residual capped at ±50% of base, served through a React manager app and a FastAPI backend.
+
+---
+
+## 21. Live demo link
+
+▶️ **Live link:** **<https://rrps-frontend.onrender.com/>**
+
+The demo link could be slower, as it has been deployed on the render free tier for now.
+See the manager app end-to-end — the daily forecast, the staffing plan, the supply order sheet, and the live feedback loop where a correction updates the model on the spot.
