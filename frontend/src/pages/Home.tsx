@@ -71,21 +71,19 @@ export default function Home() {
             />
           </div>
 
-          <div className="grid md:grid-cols-3 gap-3 mb-6">
-            <div className="md:col-span-1">
-              <WeatherCard weather={day.data.weather} />
-            </div>
-            <Card className="md:col-span-2 p-4">
-              <div className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-2">
+          <div className="grid md:grid-cols-3 gap-3 mb-6 items-stretch">
+            <WeatherCard weather={day.data.weather} className="md:col-span-1" />
+            <Card className="md:col-span-2 p-4 flex flex-col">
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Channel breakdown
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-3 flex-1 items-center">
                 {CHANNELS.map((ch) => (
                   <div key={ch}>
                     <div className="text-sm text-slate-500">
                       {CHANNEL_LABELS[ch]}
                     </div>
-                    <div className="text-xl font-bold text-slate-900">
+                    <div className="text-2xl font-bold text-slate-900">
                       {n0(day.data!.totals[ch])}
                     </div>
                   </div>
@@ -93,7 +91,7 @@ export default function Home() {
               </div>
               <Link
                 to="/forecast"
-                className="inline-block mt-4 text-sm font-medium text-blue-600 hover:underline"
+                className="text-sm font-medium text-blue-600 hover:underline"
               >
                 See hourly forecast →
               </Link>

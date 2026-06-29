@@ -17,38 +17,60 @@ const ROLE_LABELS: Record<string, string> = {
   host: "Host",
 };
 
+// Manager-friendly weather presets. Each maps to representative rain/temp values
+// the backend already understands — no need to type millimetres.
+const WEATHER_TYPES = [
+  { key: "clear", label: "Clear", icon: "☀️", rain_mm: 0, temp: 24 },
+  { key: "light_rain", label: "Light rain", icon: "🌦️", rain_mm: 1.5, temp: 21 },
+  { key: "heavy_rain", label: "Heavy rain", icon: "🌧️", rain_mm: 8, temp: 19 },
+  { key: "hot", label: "Hot", icon: "🔥", rain_mm: 0, temp: 32 },
+  { key: "cold", label: "Cold", icon: "❄️", rain_mm: 0, temp: 3 },
+] as const;
+type WeatherKey = (typeof WEATHER_TYPES)[number]["key"];
+
+// Map the live-forecast label to a preset, so toggling "override" starts from
+// whatever the forecast currently says.
+const LABEL_TO_KEY: Record<string, WeatherKey> = {
+  Clear: "clear",
+  "Light rain": "light_rain",
+  "Heavy rain": "heavy_rain",
+  Hot: "hot",
+  Cold: "cold",
+};
+
 export default function Forecast() {
   const [date, setDate] = useState(tomorrowISO());
 
-  // Weather override state
+  // Weather override state — a single preset choice, not raw numbers.
   const [overrideWeather, setOverrideWeather] = useState(false);
-  const [rain, setRain] = useState(0);
-  const [temp, setTemp] = useState(18);
+  const [weatherType, setWeatherType] = useState<WeatherKey>("clear");
 
   // Event toggles (the system can't know these from any API)
   const [holiday, setHoliday] = useState(false);
   const [promo, setPromo] = useState(false);
   const [localEvent, setLocalEvent] = useState(false);
 
-  // Live weather, used to pre-fill the editable fields.
+  // Live weather, used to seed the preset picker.
   const weather = useQuery({
     queryKey: ["weather", date],
     queryFn: () => api.weather(date),
   });
-  console.log({ weather });
+
   // When the live forecast loads (and the manager hasn't taken manual control),
-  // pre-fill the editable fields with the real values.
+  // default the preset to match the live condition.
   useEffect(() => {
-    if (weather.data?.available && !overrideWeather) {
-      if (weather.data.peak_rain_mm != null) setRain(weather.data.peak_rain_mm);
-      if (weather.data.avg_temp != null) setTemp(weather.data.avg_temp);
+    if (weather.data?.available && !overrideWeather && weather.data.label) {
+      const key = LABEL_TO_KEY[weather.data.label];
+      if (key) setWeatherType(key);
     }
   }, [weather.data, overrideWeather]);
 
+  const selectedType = WEATHER_TYPES.find((w) => w.key === weatherType)!;
+
   const overrides: ForecastOverrides = {
     use_weather: !overrideWeather, // when overriding, ignore the live baseline for weather
-    rain_mm: overrideWeather ? rain : null,
-    temp: overrideWeather ? temp : null,
+    rain_mm: overrideWeather ? selectedType.rain_mm : null,
+    temp: overrideWeather ? selectedType.temp : null,
     is_holiday: holiday ? true : null,
     is_promo: promo ? true : null,
     is_local_event: localEvent ? true : null,
@@ -121,28 +143,28 @@ export default function Forecast() {
               )}
             </div>
           ) : (
-            <div className="flex gap-3">
-              <label className="flex flex-col gap-1 flex-1 min-w-0">
-                <span className="text-xs text-slate-500">Rain (mm)</span>
-                <input
-                  type="number"
-                  min={0}
-                  step={0.5}
-                  value={rain}
-                  onChange={(e) => setRain(Number(e.target.value))}
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
-                />
-              </label>
-              <label className="flex flex-col gap-1 flex-1 min-w-0">
-                <span className="text-xs text-slate-500">Temp (°C)</span>
-                <input
-                  type="number"
-                  step={1}
-                  value={temp}
-                  onChange={(e) => setTemp(Number(e.target.value))}
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
-                />
-              </label>
+            <div>
+              <span className="text-xs text-slate-500">Pick the expected weather</span>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {WEATHER_TYPES.map((w) => {
+                  const active = w.key === weatherType;
+                  return (
+                    <button
+                      key={w.key}
+                      type="button"
+                      onClick={() => setWeatherType(w.key)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                        active
+                          ? "bg-slate-900 text-white border-slate-900"
+                          : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span>{w.icon}</span>
+                      <span>{w.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
         </Card>
@@ -172,7 +194,7 @@ export default function Forecast() {
         <div className="mb-4 flex gap-2 flex-wrap">
           {overrideWeather && (
             <Badge tone="amber">
-              Manual weather: {rain}mm · {temp}°C
+              Manual weather: {selectedType.icon} {selectedType.label}
             </Badge>
           )}
           {holiday && <Badge tone="blue">Holiday</Badge>}

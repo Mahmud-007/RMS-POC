@@ -61,6 +61,19 @@ export default function Feedback() {
         </p>
       </div>
 
+      {/* Upcoming feature — not implemented yet */}
+      <div className="mb-4 max-w-2xl flex items-start gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3">
+        <span className="text-lg">📄</span>
+        <div className="text-sm text-slate-600">
+          <span className="font-medium text-slate-700">Coming soon:</span> upload a
+          CSV export or a photo of your sales report and we'll fill in the actuals
+          automatically — no manual typing.
+          <span className="ml-2 inline-block text-xs font-medium text-slate-400 border border-slate-300 rounded px-1.5 py-0.5">
+            upcoming
+          </span>
+        </div>
+      </div>
+
       <Card className="p-5 max-w-2xl">
         <SectionTitle>Record actual customers</SectionTitle>
         <div className="grid sm:grid-cols-2 gap-4">

@@ -129,7 +129,10 @@ promo, no_show_group, normal, other
 - [ ] POS integration for ground-truth covers.
 - [ ] Supplier API for ingredient order submission.
 - [ ] Confidence intervals on forecasts (currently point predictions only).
-- [ ] Mobile-friendly dashboard.
+- [x] Mobile-friendly dashboard. (Native-feel mobile layout: centered header + bottom tab bar.)
+- [ ] **Report Results — bulk/file import (UPCOMING, flagged in UI):** let a manager upload a CSV export or a photo of the day's sales report and auto-extract actual covers per hour/channel instead of typing them. Photo path implies OCR / vision parsing. Surfaced as a "coming soon" banner on the Report Results page; not implemented.
+- [ ] Staffing throughput feedback loop (learn covers-per-hour per role from reported over/under-staffing).
+- [ ] Supplies usage/waste feedback loop (learn dish mix + effective yield from reported consumption).
 
 ---
 

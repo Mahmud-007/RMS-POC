@@ -11,12 +11,14 @@ const ICONS: Record<string, string> = {
 
 export default function WeatherCard({
   weather,
+  className = "",
 }: {
   weather: WeatherSummary | null;
+  className?: string;
 }) {
   if (!weather) {
     return (
-      <Card className="p-4">
+      <Card className={`p-4 h-full flex flex-col justify-center ${className}`}>
         <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
           Weather
         </div>
@@ -27,8 +29,8 @@ export default function WeatherCard({
     );
   }
   return (
-    <Card className="p-4">
-      <div className="flex items-center justify-between">
+    <Card className={`p-4 h-full ${className}`}>
+      <div className="flex items-center justify-between h-full">
         <div>
           <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Weather forecast
