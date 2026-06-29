@@ -130,7 +130,7 @@ export default function Feedback() {
         </div>
 
         {/* What the model predicted for this slot */}
-        <div className="mt-4 flex items-center gap-3 rounded-lg bg-slate-50 border border-slate-200 px-4 py-3">
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 border border-slate-200 px-4 py-3">
           <span className="text-sm text-slate-500">We predicted</span>
           <span className="text-xl font-bold text-slate-900">
             {day.isLoading
@@ -139,12 +139,12 @@ export default function Feedback() {
                 ? `${n1(predicted)} customers`
                 : "—"}
           </span>
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-slate-400 w-full sm:w-auto">
             {CHANNEL_LABELS[channel]} · {hour}:00 · {date}
           </span>
           {predicted != null && actual > 0 && (
             <span
-              className={`ml-auto text-sm font-medium ${
+              className={`sm:ml-auto text-sm font-medium ${
                 actual - predicted >= 0 ? "text-green-600" : "text-red-600"
               }`}
             >

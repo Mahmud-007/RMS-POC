@@ -72,6 +72,11 @@ the backend.)
   `libgomp1`).
 - **Location:** `RMS_LAT` / `RMS_LON` / `RMS_TZ` env vars set the weather-forecast
   location. Defaults point at Dhaka.
+- **Weather API limits (Open-Meteo):** free, key-less, ~10,000 calls/day (the app
+  caches per date, so real usage is a handful/day — well within limits). The free
+  tier is **non-commercial**; a paying production restaurant should switch to
+  Open-Meteo's commercial endpoint + API key (one-line change in
+  `app/integrations/weather.py`) or self-host their open-source server.
 
 ---
 

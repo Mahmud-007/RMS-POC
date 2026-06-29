@@ -35,7 +35,7 @@ export default function Forecast() {
     queryKey: ["weather", date],
     queryFn: () => api.weather(date),
   });
-
+  console.log({ weather });
   // When the live forecast loads (and the manager hasn't taken manual control),
   // pre-fill the editable fields with the real values.
   useEffect(() => {
@@ -68,7 +68,8 @@ export default function Forecast() {
           Customer &amp; Staff Forecast
         </h1>
         <p className="text-slate-500 text-sm mt-1">
-          Expected customers and the staffing it calls for on {prettyDate(date)}.
+          Expected customers and the staffing it calls for on {prettyDate(date)}
+          .
         </p>
       </div>
 
@@ -152,9 +153,17 @@ export default function Forecast() {
             Known events
           </span>
           <div className="mt-2 flex flex-col gap-1.5">
-            <Toggle label="Public holiday" checked={holiday} onChange={setHoliday} />
+            <Toggle
+              label="Public holiday"
+              checked={holiday}
+              onChange={setHoliday}
+            />
             <Toggle label="Promo running" checked={promo} onChange={setPromo} />
-            <Toggle label="Local event" checked={localEvent} onChange={setLocalEvent} />
+            <Toggle
+              label="Local event"
+              checked={localEvent}
+              onChange={setLocalEvent}
+            />
           </div>
         </Card>
       </div>
@@ -178,7 +187,7 @@ export default function Forecast() {
       {day.data && (
         <>
           {/* Totals */}
-          <div className="grid md:grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             <Card className="p-4">
               <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Total customers
@@ -239,7 +248,9 @@ export default function Forecast() {
                   {CHANNELS.map((ch, i) => (
                     <th
                       key={ch}
-                      className={`px-2 py-1.5 font-medium ${i === 0 ? "border-l border-slate-100" : ""}`}
+                      className={`px-2 py-1.5 font-medium ${
+                        i === 0 ? "border-l border-slate-100" : ""
+                      }`}
                     >
                       {CHANNEL_LABELS[ch]}
                     </th>
@@ -248,7 +259,9 @@ export default function Forecast() {
                   {ROLES.map((r, i) => (
                     <th
                       key={r}
-                      className={`px-2 py-1.5 font-medium ${i === 0 ? "border-l border-slate-100" : ""}`}
+                      className={`px-2 py-1.5 font-medium ${
+                        i === 0 ? "border-l border-slate-100" : ""
+                      }`}
                     >
                       {ROLE_LABELS[r]}
                     </th>
@@ -262,7 +275,9 @@ export default function Forecast() {
                     {CHANNELS.map((ch, i) => (
                       <td
                         key={ch}
-                        className={`px-2 py-2 text-slate-600 ${i === 0 ? "border-l border-slate-100" : ""}`}
+                        className={`px-2 py-2 text-slate-600 ${
+                          i === 0 ? "border-l border-slate-100" : ""
+                        }`}
                       >
                         {n1(h.covers[ch])}
                       </td>
@@ -273,7 +288,9 @@ export default function Forecast() {
                     {ROLES.map((r, i) => (
                       <td
                         key={r}
-                        className={`px-2 py-2 font-medium text-slate-900 ${i === 0 ? "border-l border-slate-100" : ""}`}
+                        className={`px-2 py-2 font-medium text-slate-900 ${
+                          i === 0 ? "border-l border-slate-100" : ""
+                        }`}
                       >
                         {h.headcount[r]}
                       </td>
