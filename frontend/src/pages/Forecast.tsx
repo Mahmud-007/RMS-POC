@@ -122,7 +122,7 @@ export default function Forecast() {
             </div>
           ) : (
             <div className="flex gap-3">
-              <label className="flex flex-col gap-1 flex-1">
+              <label className="flex flex-col gap-1 flex-1 min-w-0">
                 <span className="text-xs text-slate-500">Rain (mm)</span>
                 <input
                   type="number"
@@ -130,17 +130,17 @@ export default function Forecast() {
                   step={0.5}
                   value={rain}
                   onChange={(e) => setRain(Number(e.target.value))}
-                  className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
                 />
               </label>
-              <label className="flex flex-col gap-1 flex-1">
+              <label className="flex flex-col gap-1 flex-1 min-w-0">
                 <span className="text-xs text-slate-500">Temp (°C)</span>
                 <input
                   type="number"
                   step={1}
                   value={temp}
                   onChange={(e) => setTemp(Number(e.target.value))}
-                  className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
                 />
               </label>
             </div>
